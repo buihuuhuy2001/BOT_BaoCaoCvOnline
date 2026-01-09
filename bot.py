@@ -315,15 +315,19 @@ def handle_message(message):
             day, month, year = map(int, date_str.split('/'))
             datetime(year, month, day)
             state['date'] = date_str
+
             markup = InlineKeyboardMarkup(row_width=2)
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
-            bot.send_message(chat_id, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
+
+            # Gửi tin nhắn chọn ca và lưu message_id vào state để edit sau
+            sent_msg = bot.send_message(chat_id, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
+            state['message_id'] = sent_msg.message_id  # Cập nhật message_id mới
             state['step'] = 2
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
-
 @bot.callback_query_handler(func=lambda call: True)
+
 def handle_callback(call):
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
