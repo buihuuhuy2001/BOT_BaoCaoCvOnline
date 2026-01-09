@@ -120,11 +120,13 @@ def process_pending_reports():
     remaining = []
 
     for report in pending_reports:
-        report_date = datetime.strptime(report['date'], "%d/%m/%Y")
+        report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
+        report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_time = datetime.combine(report_date.date(), time(min_hour, 0))
+        required_datetime = datetime.combine(report_date, time(min_hour, 0))
 
-        if now >= required_time:
+        # Gửi nếu giờ hiện tại đã qua giờ quy định trên ngày báo cáo
+        if now >= required_datetime:
             to_submit.append(report)
         else:
             remaining.append(report)
@@ -213,7 +215,6 @@ def handle_callback(call):
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
 
-    # Xử lý xác nhận ghi đè
     if state and state.get('step') == 'confirm_overwrite':
         if call.data == 'yes_overwrite':
             schedule_report(chat_id, state, overwrite=True)
@@ -233,7 +234,6 @@ def handle_callback(call):
 
     state['ca'] = ca
 
-    # Kiểm tra đã báo ngày này chưa
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -254,14 +254,14 @@ def handle_callback(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Không trùng → xử lý bình thường
     schedule_report(chat_id, state, overwrite=False)
     bot.answer_callback_query(call.id)
 
 def schedule_report(chat_id, state, overwrite=False):
-    report_date = datetime.strptime(state['date'], "%d/%m/%Y")
+    report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
+    report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    required_time = datetime.combine(report_date.date(), time(min_hour, 0))
+    required_datetime = datetime.combine(report_date, time(min_hour, 0))
     now = datetime.now()
 
     report_data = {
@@ -272,10 +272,11 @@ def schedule_report(chat_id, state, overwrite=False):
         'message_id': state['message_id']
     }
 
-    # Đánh dấu đã báo ngay lập tức
+    # Đánh dấu đã báo ngay
     mark_as_reported(state['name'], state['date'])
 
-    if now >= required_time:
+    # Nếu giờ hiện tại đã qua giờ quy định trên ngày báo cáo → gửi ngay
+    if now >= required_datetime:
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
         if success:
@@ -289,8 +290,8 @@ def schedule_report(chat_id, state, overwrite=False):
         else:
             bot.edit_message_text("❌ Lỗi gửi form. Vui lòng thử lại sau.", chat_id, state['message_id'])
     else:
+        # Chưa tới giờ → lưu chờ
         global pending_reports
-        # Xóa báo cũ nếu đang ghi đè
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
