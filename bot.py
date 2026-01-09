@@ -6,12 +6,12 @@ import requests
 from datetime import datetime
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 import atexit
 
 app = Flask(__name__)
 
-# Token từ biến môi trường (Render)
+# Token từ env
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set!")
@@ -49,16 +49,15 @@ CA_CONFIG = {
 # Tên cố định
 NAME_OPTIONS = ["Bùi Hữu Huy", "Trịnh Xuân Tân"]
 
-# Thông tin theo tên (chỉnh nếu cần)
+# Thông tin theo tên
 USER_PROFILES = {
     "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
     "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}
 }
 
-# File lưu trạng thái đã báo cáo hôm nay
+# File lưu trạng thái đã báo cáo (chat_id: ngày đã báo cáo)
 REPORTED_FILE = "reported.json"
 
-# Load reported
 try:
     with open(REPORTED_FILE, 'r', encoding='utf-8') as f:
         reported_today = json.load(f)
@@ -75,63 +74,46 @@ def has_reported_today(chat_id):
     today = datetime.now().strftime("%d/%m/%Y")
     return reported_today.get(str(chat_id)) == today
 
-# Trạng thái người dùng
-user_states = {}
+def get_stats():
+    today = datetime.now().strftime("%d/%m/%Y")
+    stats = []
+    for name in NAME_OPTIONS:
+        # Tìm chat_id của name (giả định chat_id lưu từ lần dùng đầu, hoặc hardcode nếu biết trước)
+        # Vì chỉ 2 người, mình dùng tên làm key tạm (thay bằng chat_id nếu cần)
+        status = "Đã báo cáo" if any(v == today for v in reported_today.values()) else "Chưa báo cáo"  # Cần map tên với chat_id thực tế
+        stats.append(f"- {name}: {status}")
+    return stats
 
-# Scheduler nhắc nhở
+# Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
 def send_reminders():
     now = datetime.now()
-    current_time = now.time()
-    today = now.strftime("%d/%m/%Y")
-    
-    for chat_id_str in list(reported_today.keys()):
-        chat_id = int(chat_id_str)
-        if reported_today[chat_id_str] != today:
-            continue  # Ngày cũ, bỏ qua
-        
-        if has_reported_today(chat_id):
-            continue  # Đã báo cáo hôm nay
-        
-        # Nhắc từ 8h sáng mỗi giờ
-        if current_time.hour >= 8 and current_time.minute < 5:
-            try:
-                bot.send_message(chat_id, "Chào bạn! Hôm nay bạn chưa báo cáo ca làm việc. Gửi /report để báo cáo nhé! 😊")
-            except Exception as e:
-                print("Lỗi gửi nhắc nhở:", str(e))
-
-# Nhắc theo ca (kiểm tra mỗi 5 phút)
-def remind_by_shift():
-    now = datetime.now()
-    current_time = now.time()
     today = now.strftime("%d/%m/%Y")
     
     for chat_id_str in list(reported_today.keys()):
         chat_id = int(chat_id_str)
         if reported_today[chat_id_str] != today or has_reported_today(chat_id):
             continue
-        
-        # Lấy ca đã chọn (nếu có trong state, nhưng để đơn giản ta giả định ca hôm nay)
-        # Ở đây ta chỉ nhắc nếu chưa báo cáo, theo giờ cố định
-        if current_time.hour >= 17 and current_time.minute < 5:  # Hành chính
+        if now.hour >= 8 and now.hour <= 22 and now.minute < 5:
             try:
-                bot.send_message(chat_id, "Đã hết giờ hành chính! Gửi /report để báo cáo ca hôm nay nhé!")
-            except:
-                pass
-        elif current_time.hour >= 14 and current_time.minute < 5:  # Ca 1
-            try:
-                bot.send_message(chat_id, "Đã hết giờ Ca 1! Gửi /report để báo cáo nhé!")
-            except:
-                pass
-        elif current_time.hour >= 22 and current_time.minute < 5:  # Ca 2
-            try:
-                bot.send_message(chat_id, "Đã hết giờ Ca 2! Gửi /report để báo cáo nhé!")
-            except:
-                pass
+                bot.send_message(chat_id, "Chào bạn! Hôm nay bạn chưa báo cáo ca làm việc. Gửi /report để báo cáo nhé! 😊")
+            except Exception as e:
+                print("Lỗi gửi nhắc nhở:", str(e))
+
+def daily_stats():
+    today = datetime.now().strftime("%d/%m/%Y")
+    stats = get_stats()
+    message = f"Thống kê hôm nay ({today}):\n" + "\n".join(stats)
+    # Gửi cho từng người hoặc chat chung (thay chat_id bằng chat_id thật của anh)
+    for chat_id_str in list(reported_today.keys()):
+        try:
+            bot.send_message(int(chat_id_str), message)
+        except:
+            pass
 
 scheduler.add_job(send_reminders, IntervalTrigger(minutes=5))
-scheduler.add_job(remind_by_shift, IntervalTrigger(minutes=5))
+scheduler.add_job(daily_stats, CronTrigger(hour=22, minute=0))
 scheduler.start()
 
 atexit.register(lambda: scheduler.shutdown())
@@ -241,7 +223,6 @@ def handle_callback(call):
                 f"Thông tin: {selected_name} - {user_info['chuc_vu']} - {user_info['dia_diem']}\nChi tiết:\n{summary}",
                 chat_id, call.message.message_id
             )
-            # Đánh dấu đã báo cáo
             save_reported(chat_id, state['date'])
         else:
             bot.edit_message_text(f"❌ Lỗi gửi form (code {response.status_code})", chat_id, call.message.message_id)
@@ -252,7 +233,7 @@ def handle_callback(call):
     del user_states[chat_id]
     bot.answer_callback_query(call.id)
 
-# Webhook route với debug
+# Webhook và health
 @app.route('/webhook', methods=['POST'])
 def webhook():
     print("=== DEBUG: NEW WEBHOOK REQUEST ===")
