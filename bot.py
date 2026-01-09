@@ -36,51 +36,15 @@ entry_ids = {
 
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGKNhwuh3BxtSfCOADwBhao6w/formResponse"
 
-# Config ca + giờ tối thiểu để submit
+# Config ca + giờ tối thiểu để submit (từ giờ này trở đi được gửi)
 CA_CONFIG = {
-    'Ca 1': {
-        'tinh_hinh': 'Bình thường',
-        'cong_viec_1': 'Hỗ trợ vận hành thu phí',
-        'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc',
-        'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác',
-        'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 14  # Sau 14h
-    },
-    'Ca 2': {
-        'tinh_hinh': 'Bình thường',
-        'cong_viec_1': 'Hỗ trợ vận hành thu phí',
-        'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc',
-        'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác',
-        'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 22  # Sau 22h
-    },
-    'Ca 3': {
-        'tinh_hinh': 'Bình thường',
-        'cong_viec_1': 'Hỗ trợ vận hành thu phí',
-        'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc',
-        'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác',
-        'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 14  # Giả sử giống Ca 1, bạn có thể đổi
-    },
-    'Hành chính': {
-        'tinh_hinh': 'Bình thường',
-        'cong_viec_1': 'Xử lý các sự cố kỹ thuật phát sinh và những tình huống khẩn cấp',
-        'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc',
-        'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 17  # Sau 17h
-    },
-    'Nghỉ phép': {
-        'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 8   # Sau 8h sáng
-    },
-    'Nghỉ bù - Nghỉ Chủ nhật': {
-        'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 8
-    },
-    'Khác': {
-        'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '',
-        'min_hour': 8
-    },
+    'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
+    'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
+    'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Xử lý các sự cố kỹ thuật phát sinh và những tình huống khẩn cấp', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
+    'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
 NAME_OPTIONS = ["Bùi Hữu Huy", "Trịnh Xuân Tân"]
@@ -106,13 +70,13 @@ try:
 except FileNotFoundError:
     pending_reports = []  # Danh sách các dict báo cáo chờ
 
-# Trạng thái người dùng (đang nhập liệu)
+# Trạng thái người dùng
 user_states = {}
 
 # Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
-# --- Hàm hỗ trợ lưu / kiểm tra báo cáo ---
+# --- Hàm hỗ trợ ---
 def has_reported(name, date_str):
     return reported_data.get(name, {}).get(date_str, False)
 
@@ -127,79 +91,6 @@ def save_pending():
     with open(PENDING_FILE, 'w', encoding='utf-8') as f:
         json.dump(pending_reports, f, ensure_ascii=False, indent=4)
 
-# --- Kiểm tra và submit các báo cáo chờ ---
-def process_pending_reports():
-    global pending_reports  # Đặt global ở ĐẦU hàm
-    now = datetime.now()
-    to_submit = []
-    remaining = []
-
-    for report in pending_reports:
-        report_date = datetime.strptime(report['date'], "%d/%m/%Y")
-        min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_time = datetime.combine(report_date.date(), time(min_hour, 0))
-
-        if now >= required_time:
-            to_submit.append(report)
-        else:
-            remaining.append(report)
-
-    # Submit những cái đủ điều kiện
-    for report in to_submit:
-        success = submit_to_form(report)
-        if success:
-            mark_as_reported(report['name'], report['date'])
-            # Thông báo cho người dùng (nếu có chat_id)
-            if 'chat_id' in report and 'message_id' in report:
-                try:
-                    summary = f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}"
-                    bot.edit_message_text(
-                        f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
-                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\nChi tiết:\n{summary}",
-                        report['chat_id'], report['message_id']
-                    )
-                except Exception as e:
-                    print("Lỗi thông báo pending submit:", e)
-
-    # Cập nhật lại pending
-    pending_reports = remaining
-    save_pending()
-def process_pending_reports():
-    global pending_reports  # Đặt global ở ĐẦU hàm
-    now = datetime.now()
-    to_submit = []
-    remaining = []
-
-    for report in pending_reports:
-        report_date = datetime.strptime(report['date'], "%d/%m/%Y")
-        min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_time = datetime.combine(report_date.date(), time(min_hour, 0))
-
-        if now >= required_time:
-            to_submit.append(report)
-        else:
-            remaining.append(report)
-
-    # Submit những cái đủ điều kiện
-    for report in to_submit:
-        success = submit_to_form(report)
-        if success:
-            mark_as_reported(report['name'], report['date'])
-            # Thông báo cho người dùng (nếu có chat_id)
-            if 'chat_id' in report and 'message_id' in report:
-                try:
-                    summary = f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}"
-                    bot.edit_message_text(
-                        f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
-                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\nChi tiết:\n{summary}",
-                        report['chat_id'], report['message_id']
-                    )
-                except Exception as e:
-                    print("Lỗi thông báo pending submit:", e)
-
-    # Cập nhật lại pending
-    pending_reports = remaining
-    save_pending()
 def submit_to_form(report):
     config = CA_CONFIG[report['ca']]
     user_info = USER_PROFILES[report['name']]
@@ -224,48 +115,51 @@ def submit_to_form(report):
 
     try:
         response = requests.post(FORM_URL, data=data)
-        print(f"Pending submit {report['name']} {report['date']} {report['ca']} -> {response.status_code}")
+        print(f"Submit {report['name']} {report['date']} {report['ca']} -> {response.status_code}")
         return response.status_code in (200, 302)
     except Exception as e:
-        print("Error submitting pending:", e)
+        print("Error submitting:", e)
         return False
+
+# --- Xử lý báo cáo chờ ---
+def process_pending_reports():
+    global pending_reports
+    now = datetime.now()
+    to_submit = []
+    remaining = []
+
+    for report in pending_reports:
+        report_date = datetime.strptime(report['date'], "%d/%m/%Y")
+        min_hour = CA_CONFIG[report['ca']]['min_hour']
+        required_time = datetime.combine(report_date.date(), time(min_hour, 0))
+
+        if now >= required_time:
+            to_submit.append(report)
+        else:
+            remaining.append(report)
+
+    for report in to_submit:
+        success = submit_to_form(report)
+        if success:
+            mark_as_reported(report['name'], report['date'])
+            if 'chat_id' in report and 'message_id' in report:
+                try:
+                    bot.edit_message_text(
+                        f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
+                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\n"
+                        f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}",
+                        report['chat_id'], report['message_id']
+                    )
+                except Exception as e:
+                    print("Lỗi thông báo pending:", e)
+
+    pending_reports = remaining
+    save_pending()
 
 # Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
-scheduler.add_job(process_pending_reports, CronTrigger(hour=8, minute=1))  # Chắc chắn chạy lúc 8h01
-scheduler.add_job(process_pending_reports, CronTrigger(hour=14, minute=1))
-scheduler.add_job(process_pending_reports, CronTrigger(hour=17, minute=1))
-scheduler.add_job(process_pending_reports, CronTrigger(hour=22, minute=1))
+scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
 
-# Nhắc nhở & thống kê (dùng reported_data để kiểm tra hôm nay)
-def send_reminders():
-    now = datetime.now()
-    today = now.strftime("%d/%m/%Y")
-    if not (8 <= now.hour <= 22 and now.minute < 5):
-        return
-
-    known_chat_ids = set()
-    for name in reported_data:
-        for date_str in reported_data[name]:
-            # Giả sử chat_id được lưu tạm ở đâu đó, hoặc bỏ qua nếu không cần nhắc chính xác
-            pass  # Hiện tại không có chat_id lưu theo tên → tạm bỏ nhắc theo người cụ thể
-
-    # Bạn có thể thêm danh sách chat_id thủ công nếu cần
-    # Hoặc để trống nếu không cần nhắc nữa
-
-def daily_stats():
-    today = datetime.now().strftime("%d/%m/%Y")
-    stats = []
-    for name in NAME_OPTIONS:
-        status = "Đã báo cáo" if has_reported(name, today) else "Chưa báo cáo"
-        stats.append(f"- {name}: {status}")
-    message = f"Thống kê hôm nay ({today}):\n" + "\n".join(stats) + "\nAi chưa làm thì gửi /report nhé!"
-
-    # Gửi cho các chat_id từng báo (nếu bạn lưu thêm chat_id thì tốt hơn)
-    # Hiện tại bỏ qua để tránh lỗi
-
-scheduler.add_job(send_reminders, IntervalTrigger(minutes=5))
-scheduler.add_job(daily_stats, CronTrigger(hour=22, minute=0))
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -320,14 +214,13 @@ def handle_message(message):
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
 
-            # Gửi tin nhắn chọn ca và lưu message_id vào state để edit sau
             sent_msg = bot.send_message(chat_id, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
-            state['message_id'] = sent_msg.message_id  # Cập nhật message_id mới
+            state['message_id'] = sent_msg.message_id
             state['step'] = 2
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
-@bot.callback_query_handler(func=lambda call: True)
 
+@bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
@@ -352,7 +245,7 @@ def handle_callback(call):
 
     state['ca'] = ca
 
-    # Kiểm tra trùng tên + ngày
+    # Kiểm tra trùng
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -371,7 +264,7 @@ def handle_callback(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Không trùng → lên lịch submit
+    # Không trùng → xử lý submit
     schedule_report(chat_id, state, overwrite=False)
     bot.answer_callback_query(call.id)
 
@@ -390,7 +283,7 @@ def schedule_report(chat_id, state, overwrite=False):
     }
 
     if now >= required_time:
-        # Gửi ngay
+        # Đã qua giờ → gửi ngay
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
         if success:
@@ -399,26 +292,28 @@ def schedule_report(chat_id, state, overwrite=False):
             note = "\n*(Đã ghi đè báo cáo cũ)*" if overwrite else ""
             bot.edit_message_text(
                 f"✅ Báo cáo ngày {state['date']}, ca {state['ca']} gửi thành công!{note}\n"
-                f"Thông tin: {state['name']} - {USER_PROFILES[state['name']]['chuc_vu']}\nChi tiết:\n{summary}",
+                f"Thông tin: {state['name']} - {USER_PROFILES[state['name']]['chuc_vu']} - {USER_PROFILES[state['name']]['dia_diem']}\nChi tiết:\n{summary}",
                 chat_id, state['message_id']
             )
         else:
-            bot.edit_message_text("❌ Lỗi khi gửi báo cáo. Vui lòng thử lại sau.", chat_id, state['message_id'])
+            bot.edit_message_text("❌ Lỗi khi gửi báo cáo. Vui lòng thử lại.", chat_id, state['message_id'])
     else:
-        # Lưu chờ
+        # Chưa tới giờ → lưu chờ
+        global pending_reports
         pending_reports.append(report_data)
         save_pending()
         hour_str = f"{min_hour:02d}:00"
-        date_str = state['date']
         bot.edit_message_text(
-            f"✅ Đã nhận báo cáo {state['ca']} ngày {date_str}.\n"
-            f"Báo cáo sẽ được tự động gửi sau {hour_str} ngày {date_str} nhé! ⏰",
+            f"✅ Đã nhận báo cáo {state['ca']} ngày {state['date']}.\n"
+            f"Báo cáo sẽ được tự động gửi sau {hour_str} ngày {state['date']} nhé! ⏰",
             chat_id, state['message_id']
         )
 
-    del user_states[chat_id]
+    # Kết thúc flow
+    if chat_id in user_states:
+        del user_states[chat_id]
 
-# Webhook
+# Webhook và health
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
