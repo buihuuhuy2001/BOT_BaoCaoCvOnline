@@ -56,24 +56,27 @@ USER_PROFILES = {
     "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}
 }
 
-# File lưu trạng thái đã báo cáo (chat_id: ngày đã báo cáo)
+# File lưu trạng thái đã báo cáo: { "chat_id": { "dd/mm/yyyy": true } }
 REPORTED_FILE = "reported.json"
 
 try:
     with open(REPORTED_FILE, 'r', encoding='utf-8') as f:
-        reported_today = json.load(f)
+        reported_dates = json.load(f)
 except FileNotFoundError:
-    reported_today = {}
+    reported_dates = {}
 
 def save_reported(chat_id, date_str):
-    reported_today[str(chat_id)] = date_str
+    chat_id_str = str(chat_id)
+    if chat_id_str not in reported_dates:
+        reported_dates[chat_id_str] = {}
+    reported_dates[chat_id_str][date_str] = True
     with open(REPORTED_FILE, 'w', encoding='utf-8') as f:
-        json.dump(reported_today, f, ensure_ascii=False, indent=4)
+        json.dump(reported_dates, f, ensure_ascii=False, indent=4)
     print(f"Đã lưu báo cáo cho {chat_id} ngày {date_str}")
 
-def has_reported_today(chat_id):
-    today = datetime.now().strftime("%d/%m/%Y")
-    return reported_today.get(str(chat_id)) == today
+def has_reported_date(chat_id, date_str):
+    chat_id_str = str(chat_id)
+    return reported_dates.get(chat_id_str, {}).get(date_str, False)
 
 # Trạng thái người dùng
 user_states = {}
@@ -85,11 +88,11 @@ def send_reminders():
     now = datetime.now()
     today = now.strftime("%d/%m/%Y")
     
-    for chat_id_str in list(reported_today.keys()):
+    for chat_id_str in list(reported_dates.keys()):
         chat_id = int(chat_id_str)
-        if reported_today[chat_id_str] != today or has_reported_today(chat_id):
-            continue
-        if now.hour >= 8 and now.hour <= 22 and now.minute < 5:
+        if has_reported_date(chat_id, today):
+            continue  # Đã báo hôm nay rồi → không nhắc
+        if 8 <= now.hour <= 22 and now.minute < 5:
             try:
                 bot.send_message(chat_id, "Chào bạn! Hôm nay bạn chưa báo cáo ca làm việc. Gửi /report để báo cáo nhé! 😊")
             except Exception as e:
@@ -99,12 +102,16 @@ def daily_stats():
     today = datetime.now().strftime("%d/%m/%Y")
     stats = []
     for name in NAME_OPTIONS:
-        status = "Đã báo cáo" if any(v == today for v in reported_today.values()) else "Chưa báo cáo"
+        # Tìm xem có chat_id nào của tên này đã báo hôm nay chưa (giản lược, chỉ để thông báo chung)
+        status = "Chưa báo cáo"
+        for dates in reported_dates.values():
+            if dates.get(today):
+                status = "Đã báo cáo"  # Nếu có ai báo hôm nay thì tạm đánh dấu (có thể cải thiện sau)
+                break
         stats.append(f"- {name}: {status}")
     message = f"Thống kê hôm nay ({today}):\n" + "\n".join(stats) + "\nAi chưa làm thì gửi /report nhé!"
     
-    # Gửi cho từng người đã từng báo cáo
-    for chat_id_str in list(reported_today.keys()):
+    for chat_id_str in list(reported_dates.keys()):
         try:
             bot.send_message(int(chat_id_str), message)
         except:
@@ -134,13 +141,17 @@ def handle_name_callback(call):
         bot.answer_callback_query(call.id, "Tên không hợp lệ!")
         return
     
-    bot.edit_message_text(f"Đã chọn: {selected_name}\nBắt đầu báo cáo công việc.\nBước 1: Nhập ngày (dd/mm/yyyy, ví dụ: {datetime.now().strftime('%d/%m/%Y')}):", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text(
+        f"Đã chọn: {selected_name}\nBắt đầu báo cáo công việc.\nBước 1: Nhập ngày (dd/mm/yyyy, ví dụ: {datetime.now().strftime('%d/%m/%Y')}):",
+        call.message.chat.id, call.message.message_id
+    )
     
     user_states[chat_id] = {
         'step': 1,
         'date': '',
         'ca': '',
-        'selected_name': selected_name
+        'selected_name': selected_name,
+        'message_id': call.message.message_id  # Lưu message_id để edit sau
     }
     bot.answer_callback_query(call.id)
 
@@ -157,35 +168,21 @@ def handle_message(message):
         date_str = message.text.strip()
         try:
             day, month, year = map(int, date_str.split('/'))
-            datetime(year, month, day)
+            datetime(year, month, day)  # Validate ngày hợp lệ
             state['date'] = date_str
-            markup = InlineKeyboardMarkup()
+            markup = InlineKeyboardMarkup(row_width=2)
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
-            bot.reply_to(message, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
+            bot.send_message(chat_id, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
             state['step'] = 2
         except:
-            bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
+            bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy (ví dụ: 09/01/2026).")
 
-# Handler chọn ca & submit
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    chat_id = call.message.chat.id
-    if chat_id not in user_states or user_states[chat_id]['step'] != 2:
-        return
-    
-    ca = call.data
-    if ca not in CA_CONFIG:
-        bot.answer_callback_query(call.id, "Ca không hợp lệ!")
-        return
-    
-    state = user_states[chat_id]
-    state['ca'] = ca
-    config = CA_CONFIG[ca]
+# Hàm thực hiện submit form (tách riêng để dùng lại khi xác nhận báo lại)
+def perform_submit(chat_id, state):
+    config = CA_CONFIG[state['ca']]
     selected_name = state['selected_name']
     user_info = USER_PROFILES[selected_name]
-    
-    bot.edit_message_text("Đang gửi báo cáo...", chat_id, call.message.message_id)
     
     day, month, year = map(int, state['date'].split('/'))
     
@@ -199,7 +196,7 @@ def handle_callback(call):
         f'entry.{entry_ids["ngay_base"]}_year': str(year),
         f'entry.{entry_ids["ngay_base"]}_month': f'{month:02d}',
         f'entry.{entry_ids["ngay_base"]}_day': f'{day:02d}',
-        f'entry.{entry_ids["ca_lam_viec"]}': ca,
+        f'entry.{entry_ids["ca_lam_viec"]}': state['ca'],
         f'entry.{entry_ids["chuc_vu"]}': user_info['chuc_vu'],
         f'entry.{entry_ids["dia_diem"]}': user_info['dia_diem'],
         f'entry.{entry_ids["tinh_hinh_ca"]}': config['tinh_hinh'],
@@ -215,44 +212,92 @@ def handle_callback(call):
         response = requests.post(FORM_URL, data=data)
         print(f"DEBUG: Form submit status: {response.status_code}")
         if response.status_code in (200, 302):
-            summary = f"- Tình hình: {config['tinh_hinh']}\n- CV1: {config['cong_viec_1']}\n- CV2: {config['cong_viec_2']}\n- CV3: {config['cong_viec_3']}"
+            summary = f"- Tình hình: {config['tinh_hinh']}\n- CV1: {config['cong_viec_1'] or 'Trống'}\n- CV2: {config['cong_viec_2'] or 'Trống'}\n- CV3: {config['cong_viec_3'] or 'Trống'}"
+            overwrite_note = "\n*(Đã ghi đè báo cáo cũ)*" if has_reported_date(chat_id, state['date']) else ""
             bot.edit_message_text(
-                f"✅ Báo cáo ngày {state['date']}, ca {ca} gửi thành công!\n"
+                f"✅ Báo cáo ngày {state['date']}, ca {state['ca']} gửi thành công!{overwrite_note}\n"
                 f"Thông tin: {selected_name} - {user_info['chuc_vu']} - {user_info['dia_diem']}\nChi tiết:\n{summary}",
-                chat_id, call.message.message_id
+                chat_id, state['message_id']
             )
             save_reported(chat_id, state['date'])
         else:
-            bot.edit_message_text(f"❌ Lỗi gửi form (code {response.status_code})", chat_id, call.message.message_id)
+            bot.edit_message_text(f"❌ Lỗi gửi form (code {response.status_code})", chat_id, state['message_id'])
     except Exception as e:
         print("ERROR submit form:", str(e))
-        bot.edit_message_text(f"❌ Lỗi kết nối: {str(e)}", chat_id, call.message.message_id)
+        bot.edit_message_text(f"❌ Lỗi kết nối: {str(e)}", chat_id, state['message_id'])
     
-    del user_states[chat_id]
+    # Kết thúc flow
+    if chat_id in user_states:
+        del user_states[chat_id]
+
+# Handler callback (chọn ca + xác nhận báo lại)
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    chat_id = call.message.chat.id
+    state = user_states.get(chat_id)
+
+    # Xử lý nút xác nhận báo lại
+    if state and state.get('step') == 'confirm_overwrite':
+        if call.data == 'yes_overwrite':
+            bot.edit_message_text("Đang gửi báo cáo lại (ghi đè)...", chat_id, state['message_id'])
+            perform_submit(chat_id, state)
+        else:
+            bot.edit_message_text("Đã hủy báo cáo lại. Gửi /report để báo cáo ngày khác nhé! 😊", chat_id, state['message_id'])
+            if chat_id in user_states:
+                del user_states[chat_id]
+        bot.answer_callback_query(call.id)
+        return
+
+    # Xử lý chọn ca bình thường
+    if not state or state.get('step') != 2:
+        return
+    
+    ca = call.data
+    if ca not in CA_CONFIG:
+        bot.answer_callback_query(call.id, "Ca không hợp lệ!")
+        return
+    
+    state['ca'] = ca
+
+    # Kiểm tra đã báo ngày này chưa
+    if has_reported_date(chat_id, state['date']):
+        # ĐÃ BÁO → HỎI XÁC NHẬN
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton("✅ Có, báo lại", callback_data='yes_overwrite'),
+            InlineKeyboardButton("❌ Không, hủy", callback_data='no_overwrite')
+        )
+        config = CA_CONFIG[ca]
+        summary = f"- Ca: {ca}\n- Tình hình: {config['tinh_hinh']}\n- CV1: {config['cong_viec_1'] or 'Trống'}"
+        bot.edit_message_text(
+            f"⚠️ Bạn đã báo cáo ngày {state['date']} rồi!\n"
+            f"Dữ liệu cũ sẽ bị ghi đè nếu tiếp tục.\n\n"
+            f"Xem trước nội dung mới:\n{summary}\n\n"
+            f"Bạn có chắc chắn muốn báo lại không?",
+            chat_id, state['message_id'], reply_markup=markup
+        )
+        state['step'] = 'confirm_overwrite'
+        bot.answer_callback_query(call.id)
+        return
+
+    # CHƯA BÁO → submit ngay
+    bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
+    perform_submit(chat_id, state)
     bot.answer_callback_query(call.id)
 
 # Webhook và health
 @app.route('/webhook', methods=['POST'])
 def webhook():
     print("=== DEBUG: NEW WEBHOOK REQUEST ===")
-    print("From IP:", request.remote_addr)
-    print("Content-Type:", request.headers.get('content-type'))
     if request.headers.get('content-type') == 'application/json':
         try:
             json_string = request.get_data().decode('utf-8')
-            print("Raw JSON from Telegram:", json_string)
             update_dict = json.loads(json_string)
             update = Update.de_json(update_dict)
             if update:
-                print("Update parsed successfully. Message text:", update.message.text if update.message else "No message")
                 bot.process_new_updates([update])
-                print("process_new_updates called OK")
-            else:
-                print("Update parse failed: None")
         except Exception as e:
             print("ERROR in webhook:", str(e))
-    else:
-        print("Not JSON request")
     return '', 200
 
 @app.route('/')
