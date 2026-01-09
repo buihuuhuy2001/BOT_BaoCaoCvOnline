@@ -12,14 +12,12 @@ import atexit
 
 app = Flask(__name__)
 
-# Token từ env
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set!")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Entry IDs và FORM_URL
 entry_ids = {
     'ho_ten': '1365137621',
     'ngay_base': '505433408',
@@ -36,7 +34,6 @@ entry_ids = {
 
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGKNhwuh3BxtSfCOADwBhao6w/formResponse"
 
-# Config ca + giờ tối thiểu để submit (từ giờ này trở đi được gửi)
 CA_CONFIG = {
     'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
     'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
@@ -54,7 +51,6 @@ USER_PROFILES = {
     "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}
 }
 
-# File lưu báo cáo đã submit thành công: { "name": { "dd/mm/yyyy": true } }
 REPORTED_FILE = "reported.json"
 try:
     with open(REPORTED_FILE, 'r', encoding='utf-8') as f:
@@ -62,21 +58,17 @@ try:
 except FileNotFoundError:
     reported_data = {}
 
-# File lưu các báo cáo đang chờ submit
 PENDING_FILE = "pending_reports.json"
 try:
     with open(PENDING_FILE, 'r', encoding='utf-8') as f:
         pending_reports = json.load(f)
 except FileNotFoundError:
-    pending_reports = []  # Danh sách các dict báo cáo chờ
+    pending_reports = []
 
-# Trạng thái người dùng
 user_states = {}
 
-# Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
-# --- Hàm hỗ trợ ---
 def has_reported(name, date_str):
     return reported_data.get(name, {}).get(date_str, False)
 
@@ -121,7 +113,6 @@ def submit_to_form(report):
         print("Error submitting:", e)
         return False
 
-# --- Xử lý báo cáo chờ ---
 def process_pending_reports():
     global pending_reports
     now = datetime.now()
@@ -146,7 +137,7 @@ def process_pending_reports():
                 try:
                     bot.edit_message_text(
                         f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
-                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\n"
+                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']} - {USER_PROFILES[report['name']]['dia_diem']}\n"
                         f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}",
                         report['chat_id'], report['message_id']
                     )
@@ -156,14 +147,11 @@ def process_pending_reports():
     pending_reports = remaining
     save_pending()
 
-# Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
 scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
-
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# --- Handler ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -221,58 +209,7 @@ def handle_message(message):
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
 @bot.callback_query_handler(func=lambda call: True)
-@bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    chat_id = call.message.chat.id
-    state = user_states.get(chat_id)
-
-    # Xử lý nút xác nhận ghi đè
-    if state and state.get('step') == 'confirm_overwrite':
-        if call.data == 'yes_overwrite':
-            # Người dùng đồng ý ghi đè → xử lý như báo cáo mới (overwrite=True)
-            schedule_report(chat_id, state, overwrite=True)
-        else:
-            # Hủy
-            bot.edit_message_text("Đã hủy báo cáo lại. Gửi /report để báo cáo mới nhé! 😊", chat_id, state['message_id'])
-            del user_states[chat_id]
-        bot.answer_callback_query(call.id)
-        return
-
-    # Chỉ xử lý khi đang ở bước chọn ca
-    if not state or state.get('step') != 2:
-        return
-
-    ca = call.data
-    if ca not in CA_CONFIG:
-        bot.answer_callback_query(call.id, "Ca không hợp lệ!")
-        return
-
-    state['ca'] = ca
-
-    # Kiểm tra đã báo ngày này chưa (bao gồm cả đang chờ gửi)
-    if has_reported(state['name'], state['date']):
-        markup = InlineKeyboardMarkup()
-        markup.row(
-            InlineKeyboardButton("✅ Có, báo lại (ghi đè)", callback_data='yes_overwrite'),
-            InlineKeyboardButton("❌ Không, hủy", callback_data='no_overwrite')
-        )
-        config = CA_CONFIG[ca]
-        bot.edit_message_text(
-            f"⚠️ {state['name']} đã báo cáo ngày {state['date']} rồi!\n"
-            f"(Có thể đang chờ gửi hoặc đã gửi)\n\n"
-            f"Nếu tiếp tục, báo cáo cũ sẽ bị ghi đè.\n\n"
-            f"Ca mới: {ca}\n"
-            f"Tình hình: {config['tinh_hinh']}\n\n"
-            f"Bạn có chắc muốn báo lại không?",
-            chat_id, state['message_id'], reply_markup=markup
-        )
-        state['step'] = 'confirm_overwrite'
-        bot.answer_callback_query(call.id)
-        return
-
-    # Không trùng → báo cáo bình thường
-    schedule_report(chat_id, state, overwrite=False)
-    bot.answer_callback_query(call.id)
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
 
@@ -296,7 +233,7 @@ def handle_callback(call):
 
     state['ca'] = ca
 
-    # Kiểm tra trùng
+    # Kiểm tra đã báo ngày này chưa
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -306,8 +243,10 @@ def handle_callback(call):
         config = CA_CONFIG[ca]
         bot.edit_message_text(
             f"⚠️ {state['name']} đã báo cáo ngày {state['date']} rồi!\n"
-            f"Nếu tiếp tục, dữ liệu cũ sẽ bị ghi đè.\n\n"
-            f"Ca mới: {ca}\nTình hình: {config['tinh_hinh']}\n\n"
+            f"(Có thể đang chờ gửi hoặc đã gửi)\n\n"
+            f"Nếu tiếp tục, báo cáo cũ sẽ bị ghi đè.\n\n"
+            f"Ca mới: {ca}\n"
+            f"Tình hình: {config['tinh_hinh']}\n\n"
             f"Bạn có chắc muốn báo lại không?",
             chat_id, state['message_id'], reply_markup=markup
         )
@@ -315,7 +254,7 @@ def handle_callback(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Không trùng → xử lý submit
+    # Không trùng → xử lý bình thường
     schedule_report(chat_id, state, overwrite=False)
     bot.answer_callback_query(call.id)
 
@@ -333,11 +272,10 @@ def schedule_report(chat_id, state, overwrite=False):
         'message_id': state['message_id']
     }
 
-    # ĐÁNH DẤU ĐÃ BÁO NGAY LẬP TỨC (dù chờ hay gửi ngay)
+    # Đánh dấu đã báo ngay lập tức
     mark_as_reported(state['name'], state['date'])
 
     if now >= required_time:
-        # Gửi ngay
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
         if success:
@@ -349,10 +287,10 @@ def schedule_report(chat_id, state, overwrite=False):
                 chat_id, state['message_id']
             )
         else:
-            bot.edit_message_text("❌ Lỗi gửi form. Bot sẽ thử lại sau.", chat_id, state['message_id'])
+            bot.edit_message_text("❌ Lỗi gửi form. Vui lòng thử lại sau.", chat_id, state['message_id'])
     else:
-        # XÓA BÁO CŨ TRONG PENDING NẾU CÓ (khi ghi đè)
         global pending_reports
+        # Xóa báo cũ nếu đang ghi đè
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
@@ -367,7 +305,6 @@ def schedule_report(chat_id, state, overwrite=False):
 
     del user_states[chat_id]
 
-# Webhook và health
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
