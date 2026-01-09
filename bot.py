@@ -3,7 +3,7 @@ import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -123,9 +123,9 @@ def process_pending_reports():
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_datetime = datetime.combine(report_date, time(min_hour, 0))
+        # Thêm 1 phút để gửi từ XX:01 trở đi
+        required_datetime = datetime.combine(report_date, time(min_hour, 1))
 
-        # Gửi nếu giờ hiện tại đã qua giờ quy định trên ngày báo cáo
         if now >= required_datetime:
             to_submit.append(report)
         else:
@@ -261,7 +261,8 @@ def schedule_report(chat_id, state, overwrite=False):
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    required_datetime = datetime.combine(report_date, time(min_hour, 0))
+    # Thêm 1 phút để gửi từ XX:01 trở đi
+    required_datetime = datetime.combine(report_date, time(min_hour, 1))
     now = datetime.now()
 
     report_data = {
@@ -275,7 +276,7 @@ def schedule_report(chat_id, state, overwrite=False):
     # Đánh dấu đã báo ngay
     mark_as_reported(state['name'], state['date'])
 
-    # Nếu giờ hiện tại đã qua giờ quy định trên ngày báo cáo → gửi ngay
+    # Nếu giờ hiện tại đã qua XX:01 trên ngày báo cáo → gửi ngay
     if now >= required_datetime:
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
@@ -290,13 +291,13 @@ def schedule_report(chat_id, state, overwrite=False):
         else:
             bot.edit_message_text("❌ Lỗi gửi form. Vui lòng thử lại sau.", chat_id, state['message_id'])
     else:
-        # Chưa tới giờ → lưu chờ
+        # Chưa tới XX:01 → lưu chờ
         global pending_reports
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
 
-        hour_str = f"{min_hour:02d}:00"
+        hour_str = f"{min_hour:02d}:01"
         note = " (đã ghi đè báo cáo cũ)" if overwrite else ""
         bot.edit_message_text(
             f"✅ Đã nhận báo cáo {state['ca']} ngày {state['date']}{note}.\n"
