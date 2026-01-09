@@ -129,6 +129,7 @@ def save_pending():
 
 # --- Kiểm tra và submit các báo cáo chờ ---
 def process_pending_reports():
+    global pending_reports  # Đặt global ở ĐẦU hàm
     now = datetime.now()
     to_submit = []
     remaining = []
@@ -157,14 +158,48 @@ def process_pending_reports():
                         f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\nChi tiết:\n{summary}",
                         report['chat_id'], report['message_id']
                     )
-                except:
-                    pass
+                except Exception as e:
+                    print("Lỗi thông báo pending submit:", e)
 
     # Cập nhật lại pending
-    global pending_reports
     pending_reports = remaining
     save_pending()
+def process_pending_reports():
+    global pending_reports  # Đặt global ở ĐẦU hàm
+    now = datetime.now()
+    to_submit = []
+    remaining = []
 
+    for report in pending_reports:
+        report_date = datetime.strptime(report['date'], "%d/%m/%Y")
+        min_hour = CA_CONFIG[report['ca']]['min_hour']
+        required_time = datetime.combine(report_date.date(), time(min_hour, 0))
+
+        if now >= required_time:
+            to_submit.append(report)
+        else:
+            remaining.append(report)
+
+    # Submit những cái đủ điều kiện
+    for report in to_submit:
+        success = submit_to_form(report)
+        if success:
+            mark_as_reported(report['name'], report['date'])
+            # Thông báo cho người dùng (nếu có chat_id)
+            if 'chat_id' in report and 'message_id' in report:
+                try:
+                    summary = f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}"
+                    bot.edit_message_text(
+                        f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
+                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']}\nChi tiết:\n{summary}",
+                        report['chat_id'], report['message_id']
+                    )
+                except Exception as e:
+                    print("Lỗi thông báo pending submit:", e)
+
+    # Cập nhật lại pending
+    pending_reports = remaining
+    save_pending()
 def submit_to_form(report):
     config = CA_CONFIG[report['ca']]
     user_info = USER_PROFILES[report['name']]
