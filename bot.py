@@ -1,9 +1,9 @@
 import os
 import telebot
-from flask import Flask, request, abort
+from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
-from datetime import datetime, time, timedelta
+from datetime import datetime
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -11,14 +11,14 @@ import atexit
 
 app = Flask(__name__)
 
-# Token từ env
+# Token từ biến môi trường (Render)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set!")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Entry IDs, FORM_URL, CA_CONFIG giữ nguyên như cũ của bạn (copy từ file cũ)
+# Entry IDs và FORM_URL
 entry_ids = {
     'ho_ten': '1365137621',
     'ngay_base': '505433408',
@@ -35,6 +35,7 @@ entry_ids = {
 
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGKNhwuh3BxtSfCOADwBhao6w/formResponse"
 
+# Config ca
 CA_CONFIG = {
     'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': ''},
     'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': ''},
@@ -45,39 +46,39 @@ CA_CONFIG = {
     'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': ''},
 }
 
-# Danh sách tên cố định (2 option)
+# Tên cố định
 NAME_OPTIONS = ["Bùi Hữu Huy", "Trịnh Xuân Tân"]
 
-# Thông tin chức vụ & địa điểm theo tên
+# Thông tin theo tên (chỉnh nếu cần)
 USER_PROFILES = {
     "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
-    "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}  # chỉnh lại nếu khác
+    "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}
 }
 
-# File lưu trạng thái đã báo cáo hôm nay (per user)
+# File lưu trạng thái đã báo cáo hôm nay
 REPORTED_FILE = "reported.json"
 
-# Load reported status
+# Load reported
 try:
     with open(REPORTED_FILE, 'r', encoding='utf-8') as f:
         reported_today = json.load(f)
 except FileNotFoundError:
     reported_today = {}
 
-# Lưu trạng thái báo cáo trong ngày (chat_id -> date)
 def save_reported(chat_id, date_str):
     reported_today[str(chat_id)] = date_str
     with open(REPORTED_FILE, 'w', encoding='utf-8') as f:
         json.dump(reported_today, f, ensure_ascii=False, indent=4)
+    print(f"Đã lưu báo cáo cho {chat_id} ngày {date_str}")
 
 def has_reported_today(chat_id):
     today = datetime.now().strftime("%d/%m/%Y")
     return reported_today.get(str(chat_id)) == today
 
-# Lưu trạng thái người dùng
+# Trạng thái người dùng
 user_states = {}
 
-# Scheduler cho nhắc nhở
+# Scheduler nhắc nhở
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
 def send_reminders():
@@ -85,29 +86,57 @@ def send_reminders():
     current_time = now.time()
     today = now.strftime("%d/%m/%Y")
     
-    for chat_id_str, data in reported_today.items():
+    for chat_id_str in list(reported_today.keys()):
         chat_id = int(chat_id_str)
-        if data != today:  # Ngày mới, reset
-            continue
+        if reported_today[chat_id_str] != today:
+            continue  # Ngày cũ, bỏ qua
         
-        # Nếu đã báo cáo hôm nay → bỏ qua
         if has_reported_today(chat_id):
-            continue
+            continue  # Đã báo cáo hôm nay
         
-        # Nhắc từ 8h sáng mỗi 1 tiếng
-        if current_time.hour >= 8 and current_time.minute < 5:  # kiểm tra mỗi giờ
+        # Nhắc từ 8h sáng mỗi giờ
+        if current_time.hour >= 8 and current_time.minute < 5:
             try:
                 bot.send_message(chat_id, "Chào bạn! Hôm nay bạn chưa báo cáo ca làm việc. Gửi /report để báo cáo nhé! 😊")
+            except Exception as e:
+                print("Lỗi gửi nhắc nhở:", str(e))
+
+# Nhắc theo ca (kiểm tra mỗi 5 phút)
+def remind_by_shift():
+    now = datetime.now()
+    current_time = now.time()
+    today = now.strftime("%d/%m/%Y")
+    
+    for chat_id_str in list(reported_today.keys()):
+        chat_id = int(chat_id_str)
+        if reported_today[chat_id_str] != today or has_reported_today(chat_id):
+            continue
+        
+        # Lấy ca đã chọn (nếu có trong state, nhưng để đơn giản ta giả định ca hôm nay)
+        # Ở đây ta chỉ nhắc nếu chưa báo cáo, theo giờ cố định
+        if current_time.hour >= 17 and current_time.minute < 5:  # Hành chính
+            try:
+                bot.send_message(chat_id, "Đã hết giờ hành chính! Gửi /report để báo cáo ca hôm nay nhé!")
+            except:
+                pass
+        elif current_time.hour >= 14 and current_time.minute < 5:  # Ca 1
+            try:
+                bot.send_message(chat_id, "Đã hết giờ Ca 1! Gửi /report để báo cáo nhé!")
+            except:
+                pass
+        elif current_time.hour >= 22 and current_time.minute < 5:  # Ca 2
+            try:
+                bot.send_message(chat_id, "Đã hết giờ Ca 2! Gửi /report để báo cáo nhé!")
             except:
                 pass
 
-scheduler.add_job(send_reminders, IntervalTrigger(minutes=5))  # kiểm tra mỗi 5 phút
+scheduler.add_job(send_reminders, IntervalTrigger(minutes=5))
+scheduler.add_job(remind_by_shift, IntervalTrigger(minutes=5))
 scheduler.start()
 
-# Tắt scheduler khi app shutdown
 atexit.register(lambda: scheduler.shutdown())
 
-# Handler chọn tên khi /report
+# Handler /start và /report
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -116,7 +145,6 @@ def start_report(message):
         markup.add(InlineKeyboardButton(name, callback_data=f"name_{name}"))
     bot.reply_to(message, "Chọn tên của bạn để bắt đầu báo cáo:", reply_markup=markup)
 
-# Callback chọn tên
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
     chat_id = call.message.chat.id
@@ -136,14 +164,121 @@ def handle_name_callback(call):
     }
     bot.answer_callback_query(call.id)
 
-# Các handler còn lại giữ nguyên như cũ (handle_message, handle_callback, webhook, health)
-# (copy phần còn lại từ file cũ của bạn vào đây, chỉ thay HO_TEN, CHUC_VU, DIA_DIEM bằng lấy từ selected_name)
+# Handler nhập ngày
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    chat_id = message.chat.id
+    if chat_id not in user_states:
+        bot.reply_to(message, "Gửi /report để bắt đầu báo cáo.")
+        return
+    
+    state = user_states[chat_id]
+    if state['step'] == 1:
+        date_str = message.text.strip()
+        try:
+            day, month, year = map(int, date_str.split('/'))
+            datetime(year, month, day)
+            state['date'] = date_str
+            markup = InlineKeyboardMarkup()
+            for ca in CA_CONFIG:
+                markup.add(InlineKeyboardButton(ca, callback_data=ca))
+            bot.reply_to(message, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
+            state['step'] = 2
+        except:
+            bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
-# Trong handle_callback, khi submit thành công, thêm dòng này:
-# save_reported(chat_id, state['date'])  # đánh dấu đã báo cáo ngày đó
+# Handler chọn ca & submit
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    chat_id = call.message.chat.id
+    if chat_id not in user_states or user_states[chat_id]['step'] != 2:
+        return
+    
+    ca = call.data
+    if ca not in CA_CONFIG:
+        bot.answer_callback_query(call.id, "Ca không hợp lệ!")
+        return
+    
+    state = user_states[chat_id]
+    state['ca'] = ca
+    config = CA_CONFIG[ca]
+    selected_name = state['selected_name']
+    user_info = USER_PROFILES[selected_name]
+    
+    bot.edit_message_text("Đang gửi báo cáo...", chat_id, call.message.message_id)
+    
+    day, month, year = map(int, state['date'].split('/'))
+    
+    data = {
+        'fvv': '1',
+        'pageHistory': '0,1',
+        'fbzx': '1',
+        'submissionTimestamp': '-1',
+        
+        f'entry.{entry_ids["ho_ten"]}': selected_name,
+        f'entry.{entry_ids["ngay_base"]}_year': str(year),
+        f'entry.{entry_ids["ngay_base"]}_month': f'{month:02d}',
+        f'entry.{entry_ids["ngay_base"]}_day': f'{day:02d}',
+        f'entry.{entry_ids["ca_lam_viec"]}': ca,
+        f'entry.{entry_ids["chuc_vu"]}': user_info['chuc_vu'],
+        f'entry.{entry_ids["dia_diem"]}': user_info['dia_diem'],
+        f'entry.{entry_ids["tinh_hinh_ca"]}': config['tinh_hinh'],
+        
+        f'entry.{entry_ids["cong_viec_1"]}': config['cong_viec_1'],
+        f'entry.{entry_ids["cong_viec_2"]}': config['cong_viec_2'],
+        f'entry.{entry_ids["cong_viec_3"]}': config['cong_viec_3'],
+        f'entry.{entry_ids["cong_viec_4"]}': config['cong_viec_4'],
+        f'entry.{entry_ids["cong_viec_5"]}': config['cong_viec_5'],
+    }
+    
+    try:
+        response = requests.post(FORM_URL, data=data)
+        print(f"DEBUG: Form submit status: {response.status_code}")
+        if response.status_code in (200, 302):
+            summary = f"- Tình hình: {config['tinh_hinh']}\n- CV1: {config['cong_viec_1']}\n- CV2: {config['cong_viec_2']}\n- CV3: {config['cong_viec_3']}"
+            bot.edit_message_text(
+                f"✅ Báo cáo ngày {state['date']}, ca {ca} gửi thành công!\n"
+                f"Thông tin: {selected_name} - {user_info['chuc_vu']} - {user_info['dia_diem']}\nChi tiết:\n{summary}",
+                chat_id, call.message.message_id
+            )
+            # Đánh dấu đã báo cáo
+            save_reported(chat_id, state['date'])
+        else:
+            bot.edit_message_text(f"❌ Lỗi gửi form (code {response.status_code})", chat_id, call.message.message_id)
+    except Exception as e:
+        print("ERROR submit form:", str(e))
+        bot.edit_message_text(f"❌ Lỗi kết nối: {str(e)}", chat_id, call.message.message_id)
+    
+    del user_states[chat_id]
+    bot.answer_callback_query(call.id)
 
-# Ví dụ (thêm vào cuối try nếu success):
-save_reported(chat_id, state['date'])
+# Webhook route với debug
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    print("=== DEBUG: NEW WEBHOOK REQUEST ===")
+    print("From IP:", request.remote_addr)
+    print("Content-Type:", request.headers.get('content-type'))
+    if request.headers.get('content-type') == 'application/json':
+        try:
+            json_string = request.get_data().decode('utf-8')
+            print("Raw JSON from Telegram:", json_string)
+            update_dict = json.loads(json_string)
+            update = Update.de_json(update_dict)
+            if update:
+                print("Update parsed successfully. Message text:", update.message.text if update.message else "No message")
+                bot.process_new_updates([update])
+                print("process_new_updates called OK")
+            else:
+                print("Update parse failed: None")
+        except Exception as e:
+            print("ERROR in webhook:", str(e))
+    else:
+        print("Not JSON request")
+    return '', 200
+
+@app.route('/')
+def health():
+    return "Bot is alive!", 200
 
 if __name__ == '__main__':
     print("Flask server starting...")
