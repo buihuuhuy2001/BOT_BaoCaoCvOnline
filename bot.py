@@ -6,6 +6,7 @@ import requests
 from datetime import datetime
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 
@@ -74,15 +75,8 @@ def has_reported_today(chat_id):
     today = datetime.now().strftime("%d/%m/%Y")
     return reported_today.get(str(chat_id)) == today
 
-def get_stats():
-    today = datetime.now().strftime("%d/%m/%Y")
-    stats = []
-    for name in NAME_OPTIONS:
-        # Tìm chat_id của name (giả định chat_id lưu từ lần dùng đầu, hoặc hardcode nếu biết trước)
-        # Vì chỉ 2 người, mình dùng tên làm key tạm (thay bằng chat_id nếu cần)
-        status = "Đã báo cáo" if any(v == today for v in reported_today.values()) else "Chưa báo cáo"  # Cần map tên với chat_id thực tế
-        stats.append(f"- {name}: {status}")
-    return stats
+# Trạng thái người dùng
+user_states = {}
 
 # Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
@@ -103,9 +97,13 @@ def send_reminders():
 
 def daily_stats():
     today = datetime.now().strftime("%d/%m/%Y")
-    stats = get_stats()
-    message = f"Thống kê hôm nay ({today}):\n" + "\n".join(stats)
-    # Gửi cho từng người hoặc chat chung (thay chat_id bằng chat_id thật của anh)
+    stats = []
+    for name in NAME_OPTIONS:
+        status = "Đã báo cáo" if any(v == today for v in reported_today.values()) else "Chưa báo cáo"
+        stats.append(f"- {name}: {status}")
+    message = f"Thống kê hôm nay ({today}):\n" + "\n".join(stats) + "\nAi chưa làm thì gửi /report nhé!"
+    
+    # Gửi cho từng người đã từng báo cáo
     for chat_id_str in list(reported_today.keys()):
         try:
             bot.send_message(int(chat_id_str), message)
