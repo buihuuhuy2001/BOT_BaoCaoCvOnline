@@ -66,7 +66,7 @@ except FileNotFoundError:
     pending_reports = []
 
 user_states = {}
-known_chat_ids = set()  # Lưu chat_id để gửi nhắc nhở và báo cáo tổng hợp
+known_chat_ids = set()
 
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
@@ -226,12 +226,11 @@ def handle_name_callback(call):
     markup.add(InlineKeyboardButton("Ngày hiện tại", callback_data="date_today"))
     markup.add(InlineKeyboardButton("Tự chọn ngày khác", callback_data="date_custom"))
 
-    bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
-
+    sent_msg = bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
     user_states[chat_id] = {
         'step': 'choose_date_type',
         'name': selected_name,
-        'message_id': call.message.message_id,
+        'message_id': sent_msg.message_id,  # Cập nhật ID tin nhắn mới
         'chat_id': chat_id
     }
     known_chat_ids.add(chat_id)
@@ -251,15 +250,16 @@ def handle_date_type(call):
         markup = InlineKeyboardMarkup(row_width=2)
         for ca in CA_CONFIG:
             markup.add(InlineKeyboardButton(ca, callback_data=ca))
-        bot.edit_message_text(
+        sent_msg = bot.edit_message_text(
             f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:",
-            chat_id, call.message.message_id, reply_markup=markup
+            chat_id, state['message_id'], reply_markup=markup
         )
+        state['message_id'] = sent_msg.message_id  # Cập nhật lại ID
     else:
         state['step'] = 1
         bot.edit_message_text(
             "Nhập ngày báo cáo (dd/mm/yyyy, ví dụ: 09/01/2026):",
-            chat_id, call.message.message_id
+            chat_id, state['message_id']
         )
 
     bot.answer_callback_query(call.id)
@@ -284,7 +284,8 @@ def handle_message(message):
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
 
-            bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
+            sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
+            state['message_id'] = sent_msg.message_id  # Cập nhật ID tin nhắn chọn ca
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
