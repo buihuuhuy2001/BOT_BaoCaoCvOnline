@@ -169,12 +169,10 @@ def report_all_status(chat_id):
     today = datetime.now().strftime("%d/%m/%Y")
     status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
 
-    # Đã báo (submit thành công)
     for name in NAME_OPTIONS:
         if has_reported(name, today):
             status_lines.append(f"- {name}: Đã báo hôm nay")
         else:
-            # Kiểm tra pending cho tên này hôm nay
             pending_for_name = [r for r in pending_reports if r['date'] == today and r['name'] == name]
             if pending_for_name:
                 for p in pending_for_name:
@@ -230,7 +228,7 @@ def handle_name_callback(call):
     user_states[chat_id] = {
         'step': 'choose_date_type',
         'name': selected_name,
-        'message_id': sent_msg.message_id,  # Cập nhật ID tin nhắn mới
+        'message_id': sent_msg.message_id,
         'chat_id': chat_id
     }
     known_chat_ids.add(chat_id)
@@ -254,7 +252,7 @@ def handle_date_type(call):
             f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:",
             chat_id, state['message_id'], reply_markup=markup
         )
-        state['message_id'] = sent_msg.message_id  # Cập nhật lại ID
+        state['message_id'] = sent_msg.message_id
     else:
         state['step'] = 1
         bot.edit_message_text(
@@ -285,7 +283,7 @@ def handle_message(message):
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
 
             sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
-            state['message_id'] = sent_msg.message_id  # Cập nhật ID tin nhắn chọn ca
+            state['message_id'] = sent_msg.message_id
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
