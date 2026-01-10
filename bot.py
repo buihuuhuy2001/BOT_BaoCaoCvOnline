@@ -66,7 +66,7 @@ except FileNotFoundError:
     pending_reports = []
 
 user_states = {}
-known_chat_ids = set()  # Lưu chat_id để gửi nhắc nhở chung
+known_chat_ids = set()  # Lưu chat_id để gửi nhắc nhở và báo cáo tổng hợp
 
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
@@ -165,10 +165,46 @@ def send_hourly_reminder():
             except Exception as e:
                 print(f"Lỗi gửi nhắc: {e}")
 
+def report_all_status(chat_id, is_auto=False):
+    today = datetime.now().strftime("%d/%m/%Y")
+    status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
+
+    # Đã báo
+    for name in NAME_OPTIONS:
+        if has_reported(name, today):
+            status_lines.append(f"- {name}: Đã báo hôm nay")
+        else:
+            status_lines.append(f"- {name}: Chưa báo hôm nay")
+
+    # Pending hôm nay
+    pending_today = [r for r in pending_reports if r['date'] == today]
+    if pending_today:
+        status_lines.append("\nĐang chờ gửi:")
+        for p in pending_today:
+            min_hour = CA_CONFIG[p['ca']]['min_hour']
+            status_lines.append(f"- {p['name']}: Ca {p['ca']} (gửi sau {min_hour:02d}:01)")
+
+    if len(status_lines) == 1:
+        status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
+
+    if is_auto:
+        status_lines.append("\nTổng kết ngày hôm nay. Mai tiếp tục nhé! 😊")
+
+    message = "\n".join(status_lines)
+    try:
+        bot.send_message(chat_id, message)
+    except Exception as e:
+        print(f"Lỗi gửi báo cáo tổng hợp: {e}")
+
+def daily_summary():
+    for chat_id in known_chat_ids:
+        report_all_status(chat_id, is_auto=True)
+
 # Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
 scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
 scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))
+scheduler.add_job(daily_summary, CronTrigger(hour=22, minute=1))  # Tự động gửi báo cáo tổng hợp lúc 22:01 hàng ngày
 
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
@@ -181,6 +217,10 @@ def start_report(message):
     for name in NAME_OPTIONS:
         markup.add(InlineKeyboardButton(name, callback_data=f"name_{name}"))
     bot.reply_to(message, "Chọn tên của bạn để bắt đầu báo cáo:", reply_markup=markup)
+
+@bot.message_handler(commands=['reportall'])
+def handle_reportall(message):
+    report_all_status(message.chat.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
