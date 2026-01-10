@@ -185,7 +185,6 @@ def report_all_status(chat_id):
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
 
     bot.send_message(chat_id, "\n".join(status_lines))
-    print(f"[DEBUG] /reportall called for chat_id {chat_id}")  # Log để debug
 
 # Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
@@ -195,7 +194,7 @@ scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# --- Handler (đặt /reportall trước catch-all) ---
+# --- Handler ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -206,7 +205,6 @@ def start_report(message):
 
 @bot.message_handler(commands=['reportall'])
 def handle_reportall(message):
-    print(f"[DEBUG] Received /reportall from chat_id {message.chat.id}")
     report_all_status(message.chat.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
@@ -242,6 +240,9 @@ def handle_date_type(call):
     state = user_states.get(chat_id)
     if not state or state.get('step') != 'choose_date_type':
         return
+
+    # Ẩn menu chọn ngày
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
 
     if call.data == "date_today":
         today = datetime.now().strftime("%d/%m/%Y")
