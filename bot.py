@@ -66,6 +66,7 @@ except FileNotFoundError:
     pending_reports = []
 
 user_states = {}
+known_chat_ids = set()  # Thêm set để lưu chat_id gửi nhắc nhở
 
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
@@ -123,7 +124,6 @@ def process_pending_reports():
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        # Thêm 1 phút để gửi từ XX:01 trở đi
         required_datetime = datetime.combine(report_date, time(min_hour, 1))
 
         if now >= required_datetime:
@@ -149,11 +149,32 @@ def process_pending_reports():
     pending_reports = remaining
     save_pending()
 
+# Thêm hàm nhắc nhở hàng giờ (8h-22h, chu kỳ 1h, chỉ gửi nếu có người chưa báo)
+def send_hourly_reminder():
+    now = datetime.now()
+    if not (8 <= now.hour <= 22):
+        return
+
+    today = now.strftime("%d/%m/%Y")
+    unreported = [name for name in NAME_OPTIONS if not has_reported(name, today)]
+
+    if unreported:  # Chỉ gửi nếu có ít nhất 1 người chưa báo
+        message = f"Hôm nay ({today}) vẫn còn người chưa báo cáo ca: {', '.join(unreported)}. Ai chưa thì gửi /report nhé! 😊"
+        for chat_id in known_chat_ids:
+            try:
+                bot.send_message(chat_id, message)
+            except Exception as e:
+                print(f"Lỗi gửi nhắc: {e}")
+
+# Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
 scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
+scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))  # Nhắc nhở hàng giờ từ 8h-22h
+
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
+# --- Handler ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -183,6 +204,7 @@ def handle_name_callback(call):
         'message_id': call.message.message_id,
         'chat_id': chat_id
     }
+    known_chat_ids.add(chat_id)  # Thêm chat_id khi chọn tên
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda message: True)
@@ -233,6 +255,7 @@ def handle_callback(call):
         return
 
     state['ca'] = ca
+    known_chat_ids.add(chat_id)  # Thêm chat_id khi chọn ca (để chắc chắn)
 
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
@@ -261,7 +284,6 @@ def schedule_report(chat_id, state, overwrite=False):
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    # Thêm 1 phút để gửi từ XX:01 trở đi
     required_datetime = datetime.combine(report_date, time(min_hour, 1))
     now = datetime.now()
 
@@ -273,10 +295,8 @@ def schedule_report(chat_id, state, overwrite=False):
         'message_id': state['message_id']
     }
 
-    # Đánh dấu đã báo ngay
     mark_as_reported(state['name'], state['date'])
 
-    # Nếu giờ hiện tại đã qua XX:01 trên ngày báo cáo → gửi ngay
     if now >= required_datetime:
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
@@ -291,7 +311,6 @@ def schedule_report(chat_id, state, overwrite=False):
         else:
             bot.edit_message_text("❌ Lỗi gửi form. Vui lòng thử lại sau.", chat_id, state['message_id'])
     else:
-        # Chưa tới XX:01 → lưu chờ
         global pending_reports
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
