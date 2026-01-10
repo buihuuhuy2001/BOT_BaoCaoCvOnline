@@ -184,7 +184,7 @@ def report_all_status(chat_id):
     if len(status_lines) == 1:
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
 
-    bot.reply_to(chat_id, "\n".join(status_lines))
+    bot.send_message(chat_id, "\n".join(status_lines))
 
 # Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
@@ -248,17 +248,11 @@ def handle_date_type(call):
         markup = InlineKeyboardMarkup(row_width=2)
         for ca in CA_CONFIG:
             markup.add(InlineKeyboardButton(ca, callback_data=ca))
-        sent_msg = bot.edit_message_text(
-            f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:",
-            chat_id, state['message_id'], reply_markup=markup
-        )
+        sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:", reply_markup=markup)
         state['message_id'] = sent_msg.message_id
     else:
         state['step'] = 1
-        bot.edit_message_text(
-            "Nhập ngày báo cáo (dd/mm/yyyy, ví dụ: 09/01/2026):",
-            chat_id, state['message_id']
-        )
+        bot.send_message(chat_id, "Nhập ngày báo cáo (dd/mm/yyyy, ví dụ: 09/01/2026):")
 
     bot.answer_callback_query(call.id)
 
