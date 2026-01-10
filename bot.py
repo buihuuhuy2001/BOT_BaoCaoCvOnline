@@ -66,7 +66,7 @@ except FileNotFoundError:
     pending_reports = []
 
 user_states = {}
-known_chat_ids = set()  # Thêm set để lưu chat_id gửi nhắc nhở
+known_chat_ids = set()  # Lưu chat_id để gửi nhắc nhở chung
 
 scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
 
@@ -149,7 +149,6 @@ def process_pending_reports():
     pending_reports = remaining
     save_pending()
 
-# Thêm hàm nhắc nhở hàng giờ (8h-22h, chu kỳ 1h, chỉ gửi nếu có người chưa báo)
 def send_hourly_reminder():
     now = datetime.now()
     if not (8 <= now.hour <= 22):
@@ -158,7 +157,7 @@ def send_hourly_reminder():
     today = now.strftime("%d/%m/%Y")
     unreported = [name for name in NAME_OPTIONS if not has_reported(name, today)]
 
-    if unreported:  # Chỉ gửi nếu có ít nhất 1 người chưa báo
+    if unreported:
         message = f"Hôm nay ({today}) vẫn còn người chưa báo cáo ca: {', '.join(unreported)}. Ai chưa thì gửi /report nhé! 😊"
         for chat_id in known_chat_ids:
             try:
@@ -169,7 +168,7 @@ def send_hourly_reminder():
 # Scheduler jobs
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
 scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
-scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))  # Nhắc nhở hàng giờ từ 8h-22h
+scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))
 
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
@@ -192,19 +191,50 @@ def handle_name_callback(call):
         return
 
     bot.edit_message_text(
-        f"Đã chọn: {selected_name}\nBắt đầu báo cáo công việc.\nBước 1: Nhập ngày (dd/mm/yyyy, ví dụ: {datetime.now().strftime('%d/%m/%Y')}):",
+        f"Đã chọn: {selected_name}\nChọn loại ngày báo cáo:",
         chat_id, call.message.message_id
     )
 
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton("Ngày hiện tại", callback_data="date_today"))
+    markup.add(InlineKeyboardButton("Tự chọn ngày khác", callback_data="date_custom"))
+
+    bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
+
     user_states[chat_id] = {
-        'step': 1,
-        'date': '',
-        'ca': '',
+        'step': 'choose_date_type',
         'name': selected_name,
         'message_id': call.message.message_id,
         'chat_id': chat_id
     }
-    known_chat_ids.add(chat_id)  # Thêm chat_id khi chọn tên
+    known_chat_ids.add(chat_id)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data in ["date_today", "date_custom"])
+def handle_date_type(call):
+    chat_id = call.message.chat.id
+    state = user_states.get(chat_id)
+    if not state or state.get('step') != 'choose_date_type':
+        return
+
+    if call.data == "date_today":
+        today = datetime.now().strftime("%d/%m/%Y")
+        state['date'] = today
+        state['step'] = 2
+        markup = InlineKeyboardMarkup(row_width=2)
+        for ca in CA_CONFIG:
+            markup.add(InlineKeyboardButton(ca, callback_data=ca))
+        bot.edit_message_text(
+            f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:",
+            chat_id, call.message.message_id, reply_markup=markup
+        )
+    else:
+        state['step'] = 1
+        bot.edit_message_text(
+            "Nhập ngày báo cáo (dd/mm/yyyy, ví dụ: 09/01/2026):",
+            chat_id, call.message.message_id
+        )
+
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda message: True)
@@ -221,14 +251,13 @@ def handle_message(message):
             day, month, year = map(int, date_str.split('/'))
             datetime(year, month, day)
             state['date'] = date_str
+            state['step'] = 2
 
             markup = InlineKeyboardMarkup(row_width=2)
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
 
-            sent_msg = bot.send_message(chat_id, "Bước 2: Chọn ca làm việc:", reply_markup=markup)
-            state['message_id'] = sent_msg.message_id
-            state['step'] = 2
+            bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
@@ -255,7 +284,7 @@ def handle_callback(call):
         return
 
     state['ca'] = ca
-    known_chat_ids.add(chat_id)  # Thêm chat_id khi chọn ca (để chắc chắn)
+    known_chat_ids.add(chat_id)
 
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
