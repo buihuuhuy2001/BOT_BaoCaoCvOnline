@@ -167,29 +167,48 @@ def send_hourly_reminder():
 
 def report_all_status(chat_id):
     today = datetime.now().strftime("%d/%m/%Y")
-    status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
+    lines = [f"📋 Tình hình báo cáo hôm nay ({today}):\n"]
 
     for name in NAME_OPTIONS:
+        # 1. Kiểm tra pending trước
+        pendings = [
+            r for r in pending_reports
+            if r['name'] == name and r['date'] == today
+        ]
+
+        if pendings:
+            for p in pendings:
+                min_hour = CA_CONFIG[p['ca']]['min_hour']
+                lines.append(
+                    f"⏳ {name}: Đang chờ gửi – Ca {p['ca']} (sau {min_hour:02d}:01)"
+                )
+            continue
+
+        # 2. Nếu không pending mà đã reported
         if has_reported(name, today):
-            status_lines.append(f"- {name}: Đã báo hôm nay")
+            lines.append(f"✅ {name}: Đã gửi báo cáo")
         else:
-            pending_for_name = [r for r in pending_reports if r['date'] == today and r['name'] == name]
-            if pending_for_name:
-                for p in pending_for_name:
-                    min_hour = CA_CONFIG[p['ca']]['min_hour']
-                    status_lines.append(f"- {name}: Đang chờ gửi Ca {p['ca']} (sau {min_hour:02d}:01)")
-            else:
-                status_lines.append(f"- {name}: Chưa báo hôm nay")
+            lines.append(f"❌ {name}: Chưa báo cáo")
 
-    if len(status_lines) == 1:
-        status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
+    bot.send_message(chat_id, "\n".join(lines))
 
-    bot.send_message(chat_id, "\n".join(status_lines))
 
 # Scheduler jobs
-scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5))
-scheduler.add_job(process_pending_reports, CronTrigger(hour='8,14,17,22', minute=1))
-scheduler.add_job(send_hourly_reminder, CronTrigger(hour='8-22', minute=0))
+scheduler.add_job(
+    process_pending_reports, 
+    IntervalTrigger(minutes=5).
+    timezone="Asia/Ho_Chi_Minh"
+    )
+scheduler.add_job(
+    process_pending_reports, 
+    CronTrigger(hour='8,14,17,22', minute=1)
+    timezone="Asia/Ho_Chi_Minh"
+    )
+scheduler.add_job(
+    send_hourly_reminder, 
+    ronTrigger(hour='8-22', minute=0)
+    timezone="Asia/Ho_Chi_Minh"
+    )
 
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
