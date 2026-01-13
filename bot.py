@@ -126,9 +126,7 @@ def process_pending_reports():
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_time = time(min_hour, 1)
-        required_datetime = datetime.combine(report_date, required_time)
-        required_datetime = vn_tz.localize(required_datetime)
+        required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
 
         if now >= required_datetime:
             to_submit.append(report)
@@ -190,7 +188,7 @@ def report_all_status(chat_id):
 
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler jobs - Set timezone rõ ràng
+# Scheduler jobs
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -259,7 +257,6 @@ def handle_date_type(call):
     if not state or state.get('step') != 'choose_date_type':
         return
 
-    # Ẩn menu chọn ngày
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
 
     if call.data == "date_today":
@@ -354,9 +351,7 @@ def schedule_report(chat_id, state, overwrite=False):
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    required_time = time(min_hour, 1)
-    required_datetime = datetime.combine(report_date, required_time)
-    required_datetime = vn_tz.localize(required_datetime)
+    required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
     now = datetime.now(vn_tz)
 
     report_data = {
