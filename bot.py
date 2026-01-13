@@ -3,7 +3,7 @@ import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -188,7 +188,7 @@ def report_all_status(chat_id):
 
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler jobs - Cú pháp đúng, có dấu phẩy và ngoặc
+# Scheduler jobs - Cú pháp chuẩn
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -210,7 +210,7 @@ scheduler.add_job(
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# --- Handler (giữ nguyên, /reportall đặt trước catch-all) ---
+# Handler
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
