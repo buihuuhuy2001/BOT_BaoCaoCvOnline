@@ -10,11 +10,11 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from zoneinfo import ZoneInfo
 import atexit
-import time  # để debug
+import time
 
 app = Flask(__name__)
 
-# Debug múi giờ khi khởi động (xem log sau deploy)
+# Debug múi giờ khi khởi động
 print("=== DEBUG MÚI GIỜ KHI BOT KHỞI ĐỘNG ===")
 print("Server local time (UTC):", datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"))
 print("Timezone name:", time.tzname)
@@ -27,6 +27,16 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set!")
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# === TỰ ĐỘNG SET WEBHOOK KHI BOT KHỞI ĐỘNG (quan trọng để nhận callback khi ấn nút) ===
+WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+
+try:
+    bot.remove_webhook()  # Xóa webhook cũ để tránh xung đột
+    bot.set_webhook(url=WEBHOOK_URL)
+    print(f"[WEBHOOK SUCCESS] Webhook đã được set: {WEBHOOK_URL}")
+except Exception as e:
+    print(f"[WEBHOOK ERROR] Lỗi khi set webhook: {str(e)}")
 
 entry_ids = {
     'ho_ten': '1365137621',
@@ -190,7 +200,7 @@ def report_all_status(chat_id):
     bot.send_message(chat_id, "\n".join(status_lines))
     print(f"[DEBUG] /reportall called for chat_id {chat_id}")
 
-# Scheduler jobs - SERVER CHẠY UTC → BÙ TRỪ -7 TIẾNG ĐỂ CHẠY ĐÚNG GIỜ VIỆT NAM
+# Scheduler jobs - SERVER UTC → bù trừ -7 tiếng
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -198,12 +208,12 @@ scheduler.add_job(
 )
 scheduler.add_job(
     process_pending_reports,
-    CronTrigger(hour='1,7,10,15', minute=1),  # 1h UTC=8h VN, 7h=14h, 10h=17h, 15h=22h
+    CronTrigger(hour='1,7,10,15', minute=1),
     timezone=vn_tz
 )
 scheduler.add_job(
     send_hourly_reminder,
-    CronTrigger(hour='1-15', minute=0),       # 1h → 15h UTC = 8h → 22h VN
+    CronTrigger(hour='1-15', minute=0),
     timezone=vn_tz
 )
 
@@ -225,6 +235,7 @@ def handle_reportall(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
+    print(f"[CALLBACK] Nhận chọn tên: {call.data} từ chat {call.message.chat.id}")
     chat_id = call.message.chat.id
     selected_name = call.data.replace('name_', '')
     if selected_name not in NAME_OPTIONS:
@@ -249,6 +260,7 @@ def handle_name_callback(call):
 
 @bot.callback_query_handler(func=lambda call: call.data in ["date_today", "date_custom"])
 def handle_date_type(call):
+    print(f"[CALLBACK] Nhận chọn ngày loại: {call.data} từ chat {call.message.chat.id}")
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
     if not state or state.get('step') != 'choose_date_type':
@@ -292,9 +304,9 @@ def handle_message(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
+    print(f"[CALLBACK DEBUG] Nhận callback query: data={call.data} | chat_id={call.message.chat.id} | message_id={call.message.message_id}")
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
-    print(f"[DEBUG] Callback received for chat_id {chat_id}, data: {call.data}")
     if state and state.get('step') == 'confirm_overwrite':
         if call.data == 'yes_overwrite':
             schedule_report(chat_id, state, overwrite=True)
@@ -305,6 +317,7 @@ def handle_callback(call):
         return
     if not state or state.get('step') != 2:
         print("[DEBUG] State not found or step not 2")
+        bot.answer_callback_query(call.id, text="Không tìm thấy trạng thái, vui lòng thử lại /report")
         return
     ca = call.data
     if ca not in CA_CONFIG:
@@ -312,7 +325,7 @@ def handle_callback(call):
         return
     state['ca'] = ca
     known_chat_ids.add(chat_id)
-    print(f"[DEBUG] Selected ca: {ca} for name {state['name']}")
+    print(f"[DEBUG] Đã chọn ca: {ca} cho {state['name']}")
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -380,12 +393,17 @@ def schedule_report(chat_id, state, overwrite=False):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        try:
-            update = Update.de_json(request.get_json())
+        json_string = request.get_data().decode('utf-8')
+        update = Update.de_json(json_string)
+        if update:
+            print(f"[WEBHOOK] Nhận update từ Telegram: update_id={update.update_id}")
             bot.process_new_updates([update])
-        except Exception as e:
-            print("Webhook error:", e)
-    return '', 200
+            return '', 200
+        else:
+            print("[WEBHOOK] Không parse được update JSON")
+            return 'Invalid update', 400
+    print("[WEBHOOK] Request không phải JSON")
+    return 'Not JSON', 403
 
 @app.route('/')
 def health():
