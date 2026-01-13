@@ -1,8 +1,4 @@
 import os
-
-# BUỘC múi giờ hệ thống là Việt Nam NGAY TỪ ĐẦU (rất quan trọng khi deploy lên cloud)
-os.environ['TZ'] = 'Asia/Ho_Chi_Minh'
-
 import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -14,17 +10,17 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from zoneinfo import ZoneInfo
 import atexit
-import time  # để debug tzname
-
-# Debug múi giờ khi bot khởi động (xem log sau khi deploy)
-print("=== DEBUG MÚI GIỜ KHI BOT KHỞI ĐỘNG ===")
-print("Server local time:", datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"))
-print("Timezone name:", time.tzname)
-print("VN time (ZoneInfo):", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d %H:%M:%S"))
-print("Current hour (should be VN hour):", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).hour)
-print("=======================================")
+import time  # để debug
 
 app = Flask(__name__)
+
+# Debug múi giờ khi khởi động (xem log sau deploy)
+print("=== DEBUG MÚI GIỜ KHI BOT KHỞI ĐỘNG ===")
+print("Server local time (UTC):", datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"))
+print("Timezone name:", time.tzname)
+print("VN time (ZoneInfo):", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d %H:%M:%S"))
+print("Current VN hour:", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).hour)
+print("=======================================")
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
@@ -194,7 +190,7 @@ def report_all_status(chat_id):
     bot.send_message(chat_id, "\n".join(status_lines))
     print(f"[DEBUG] /reportall called for chat_id {chat_id}")
 
-# Scheduler jobs (giờ đã đúng múi giờ VN)
+# Scheduler jobs - SERVER CHẠY UTC → BÙ TRỪ -7 TIẾNG ĐỂ CHẠY ĐÚNG GIỜ VIỆT NAM
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -202,12 +198,12 @@ scheduler.add_job(
 )
 scheduler.add_job(
     process_pending_reports,
-    CronTrigger(hour='8,14,17,22', minute=1),
+    CronTrigger(hour='1,7,10,15', minute=1),  # 1h UTC=8h VN, 7h=14h, 10h=17h, 15h=22h
     timezone=vn_tz
 )
 scheduler.add_job(
     send_hourly_reminder,
-    CronTrigger(hour='8-22', minute=0),
+    CronTrigger(hour='1-15', minute=0),       # 1h → 15h UTC = 8h → 22h VN
     timezone=vn_tz
 )
 
