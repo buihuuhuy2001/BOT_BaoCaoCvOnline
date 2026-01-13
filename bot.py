@@ -1,4 +1,8 @@
 import os
+
+# BUỘC múi giờ hệ thống là Việt Nam NGAY TỪ ĐẦU (rất quan trọng khi deploy lên cloud)
+os.environ['TZ'] = 'Asia/Ho_Chi_Minh'
+
 import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -10,6 +14,15 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from zoneinfo import ZoneInfo
 import atexit
+import time  # để debug tzname
+
+# Debug múi giờ khi bot khởi động (xem log sau khi deploy)
+print("=== DEBUG MÚI GIỜ KHI BOT KHỞI ĐỘNG ===")
+print("Server local time:", datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"))
+print("Timezone name:", time.tzname)
+print("VN time (ZoneInfo):", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d %H:%M:%S"))
+print("Current hour (should be VN hour):", datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).hour)
+print("=======================================")
 
 app = Flask(__name__)
 
@@ -70,6 +83,7 @@ user_states = {}
 known_chat_ids = set()
 
 vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+
 scheduler = BackgroundScheduler(timezone=vn_tz)
 
 def has_reported(name, date_str):
@@ -90,7 +104,6 @@ def submit_to_form(report):
     config = CA_CONFIG[report['ca']]
     user_info = USER_PROFILES[report['name']]
     day, month, year = map(int, report['date'].split('/'))
-
     data = {
         'fvv': '1', 'pageHistory': '0,1', 'fbzx': '1', 'submissionTimestamp': '-1',
         f'entry.{entry_ids["ho_ten"]}': report['name'],
@@ -107,7 +120,6 @@ def submit_to_form(report):
         f'entry.{entry_ids["cong_viec_4"]}': config['cong_viec_4'],
         f'entry.{entry_ids["cong_viec_5"]}': config['cong_viec_5'],
     }
-
     try:
         response = requests.post(FORM_URL, data=data)
         print(f"Submit {report['name']} {report['date']} {report['ca']} -> {response.status_code}")
@@ -121,18 +133,15 @@ def process_pending_reports():
     now = datetime.now(vn_tz)
     to_submit = []
     remaining = []
-
     for report in pending_reports:
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
         required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
-
         if now >= required_datetime:
             to_submit.append(report)
         else:
             remaining.append(report)
-
     for report in to_submit:
         success = submit_to_form(report)
         if success:
@@ -147,7 +156,6 @@ def process_pending_reports():
                     )
                 except Exception as e:
                     print("Lỗi thông báo pending:", e)
-
     pending_reports = remaining
     save_pending()
 
@@ -156,10 +164,8 @@ def send_hourly_reminder():
     print(f"[DEBUG] send_hourly_reminder called at {now.strftime('%H:%M')} VN")
     if not (8 <= now.hour <= 22):
         return
-
     today = now.strftime("%d/%m/%Y")
     unreported = [name for name in NAME_OPTIONS if not has_reported(name, today)]
-
     if unreported:
         message = f"Hôm nay ({today}) vẫn còn người chưa báo cáo ca: {', '.join(unreported)}. Ai chưa thì gửi /report nhé! 😊"
         for chat_id in known_chat_ids:
@@ -172,7 +178,6 @@ def send_hourly_reminder():
 def report_all_status(chat_id):
     today = datetime.now(vn_tz).strftime("%d/%m/%Y")
     status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
-
     for name in NAME_OPTIONS:
         if has_reported(name, today):
             status_lines.append(f"- {name}: Đã báo hôm nay")
@@ -184,26 +189,22 @@ def report_all_status(chat_id):
                     status_lines.append(f"- {name}: Đang chờ gửi Ca {p['ca']} (sau {min_hour:02d}:01)")
             else:
                 status_lines.append(f"- {name}: Chưa báo hôm nay")
-
     if len(status_lines) == 1:
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
-
     bot.send_message(chat_id, "\n".join(status_lines))
     print(f"[DEBUG] /reportall called for chat_id {chat_id}")
 
-# Scheduler jobs
+# Scheduler jobs (giờ đã đúng múi giờ VN)
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
     timezone=vn_tz
 )
-
 scheduler.add_job(
     process_pending_reports,
     CronTrigger(hour='8,14,17,22', minute=1),
     timezone=vn_tz
 )
-
 scheduler.add_job(
     send_hourly_reminder,
     CronTrigger(hour='8-22', minute=0),
@@ -213,7 +214,7 @@ scheduler.add_job(
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# --- Handler ---
+# --- Handlers ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -233,16 +234,13 @@ def handle_name_callback(call):
     if selected_name not in NAME_OPTIONS:
         bot.answer_callback_query(call.id, "Tên không hợp lệ!")
         return
-
     bot.edit_message_text(
         f"Đã chọn: {selected_name}\nChọn loại ngày báo cáo:",
         chat_id, call.message.message_id
     )
-
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton("Ngày hiện tại", callback_data="date_today"))
     markup.add(InlineKeyboardButton("Tự chọn ngày khác", callback_data="date_custom"))
-
     sent_msg = bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
     user_states[chat_id] = {
         'step': 'choose_date_type',
@@ -259,9 +257,7 @@ def handle_date_type(call):
     state = user_states.get(chat_id)
     if not state or state.get('step') != 'choose_date_type':
         return
-
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
-
     if call.data == "date_today":
         today = datetime.now(vn_tz).strftime("%d/%m/%Y")
         state['date'] = today
@@ -274,7 +270,6 @@ def handle_date_type(call):
     else:
         state['step'] = 1
         bot.send_message(chat_id, "Nhập ngày báo cáo (dd/mm/yyyy, ví dụ: 09/01/2026):")
-
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda message: True)
@@ -283,7 +278,6 @@ def handle_message(message):
     if chat_id not in user_states:
         bot.reply_to(message, "Gửi /report để bắt đầu báo cáo.")
         return
-
     state = user_states[chat_id]
     if state['step'] == 1:
         date_str = message.text.strip()
@@ -292,11 +286,9 @@ def handle_message(message):
             datetime(year, month, day)
             state['date'] = date_str
             state['step'] = 2
-
             markup = InlineKeyboardMarkup(row_width=2)
             for ca in CA_CONFIG:
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
-
             sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
             state['message_id'] = sent_msg.message_id
         except:
@@ -306,9 +298,7 @@ def handle_message(message):
 def handle_callback(call):
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
-
     print(f"[DEBUG] Callback received for chat_id {chat_id}, data: {call.data}")
-
     if state and state.get('step') == 'confirm_overwrite':
         if call.data == 'yes_overwrite':
             schedule_report(chat_id, state, overwrite=True)
@@ -317,21 +307,16 @@ def handle_callback(call):
             del user_states[chat_id]
         bot.answer_callback_query(call.id)
         return
-
     if not state or state.get('step') != 2:
         print("[DEBUG] State not found or step not 2")
         return
-
     ca = call.data
     if ca not in CA_CONFIG:
         bot.answer_callback_query(call.id, "Ca không hợp lệ!")
         return
-
     state['ca'] = ca
     known_chat_ids.add(chat_id)
-
     print(f"[DEBUG] Selected ca: {ca} for name {state['name']}")
-
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -351,7 +336,6 @@ def handle_callback(call):
         state['step'] = 'confirm_overwrite'
         bot.answer_callback_query(call.id)
         return
-
     schedule_report(chat_id, state, overwrite=False)
     bot.answer_callback_query(call.id)
 
@@ -361,7 +345,6 @@ def schedule_report(chat_id, state, overwrite=False):
     min_hour = CA_CONFIG[state['ca']]['min_hour']
     required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
     now = datetime.now(vn_tz)
-
     report_data = {
         'name': state['name'],
         'date': state['date'],
@@ -369,11 +352,8 @@ def schedule_report(chat_id, state, overwrite=False):
         'chat_id': chat_id,
         'message_id': state['message_id']
     }
-
     mark_as_reported(state['name'], state['date'])
-
     print(f"[DEBUG] Scheduling report for {state['name']}, ca {state['ca']}, date {state['date']}, now {now}, required {required_datetime}")
-
     if now >= required_datetime:
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
         success = submit_to_form(report_data)
@@ -392,7 +372,6 @@ def schedule_report(chat_id, state, overwrite=False):
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
-
         hour_str = f"{min_hour:02d}:01"
         note = " (đã ghi đè báo cáo cũ)" if overwrite else ""
         bot.edit_message_text(
@@ -400,7 +379,6 @@ def schedule_report(chat_id, state, overwrite=False):
             f"Báo cáo sẽ tự động gửi sau {hour_str} ngày {state['date']} nhé! ⏰",
             chat_id, state['message_id']
         )
-
     del user_states[chat_id]
 
 @app.route('/webhook', methods=['POST'])
