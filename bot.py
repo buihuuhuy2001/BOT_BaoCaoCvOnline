@@ -188,7 +188,7 @@ def report_all_status(chat_id):
 
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler jobs
+# Scheduler jobs - Cú pháp đúng, có dấu phẩy và ngoặc
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -210,7 +210,7 @@ scheduler.add_job(
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# --- Handler ---
+# --- Handler (giữ nguyên, /reportall đặt trước catch-all) ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
