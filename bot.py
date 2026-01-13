@@ -8,7 +8,7 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from pytz import timezone as pytz_timezone
+from zoneinfo import ZoneInfo  # Built-in, không cần pip
 import atexit
 
 app = Flask(__name__)
@@ -69,7 +69,7 @@ except FileNotFoundError:
 user_states = {}
 known_chat_ids = set()
 
-vn_tz = pytz_timezone("Asia/Ho_Chi_Minh")
+vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
 scheduler = BackgroundScheduler(timezone=vn_tz)
 
 def has_reported(name, date_str):
@@ -188,7 +188,7 @@ def report_all_status(chat_id):
 
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler jobs - Cú pháp chuẩn
+# Scheduler jobs
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
@@ -210,7 +210,7 @@ scheduler.add_job(
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# Handler
+# --- Handler ---
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
