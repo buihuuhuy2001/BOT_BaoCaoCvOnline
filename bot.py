@@ -8,7 +8,7 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from zoneinfo import ZoneInfo  # Built-in, không cần pip
+from zoneinfo import ZoneInfo
 import atexit
 
 app = Flask(__name__)
@@ -45,11 +45,11 @@ CA_CONFIG = {
     'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
-NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang"]
+NAME_OPTIONS = ["Bùi Hữu Huy", "Trịnh Xuân Tân"]
 
 USER_PROFILES = {
     "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
-    "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"}
+    "Trịnh Xuân Tân": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP Km102 - Cao tốc"}
 }
 
 REPORTED_FILE = "reported.json"
@@ -153,6 +153,7 @@ def process_pending_reports():
 
 def send_hourly_reminder():
     now = datetime.now(vn_tz)
+    print(f"[DEBUG] send_hourly_reminder called at {now.strftime('%H:%M')} VN")
     if not (8 <= now.hour <= 22):
         return
 
@@ -164,6 +165,7 @@ def send_hourly_reminder():
         for chat_id in known_chat_ids:
             try:
                 bot.send_message(chat_id, message)
+                print(f"[DEBUG] Sent reminder to chat_id {chat_id}")
             except Exception as e:
                 print(f"Lỗi gửi nhắc: {e}")
 
@@ -187,6 +189,7 @@ def report_all_status(chat_id):
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
 
     bot.send_message(chat_id, "\n".join(status_lines))
+    print(f"[DEBUG] /reportall called for chat_id {chat_id}")
 
 # Scheduler jobs
 scheduler.add_job(
@@ -304,6 +307,8 @@ def handle_callback(call):
     chat_id = call.message.chat.id
     state = user_states.get(chat_id)
 
+    print(f"[DEBUG] Callback received for chat_id {chat_id}, data: {call.data}")
+
     if state and state.get('step') == 'confirm_overwrite':
         if call.data == 'yes_overwrite':
             schedule_report(chat_id, state, overwrite=True)
@@ -314,6 +319,7 @@ def handle_callback(call):
         return
 
     if not state or state.get('step') != 2:
+        print("[DEBUG] State not found or step not 2")
         return
 
     ca = call.data
@@ -323,6 +329,8 @@ def handle_callback(call):
 
     state['ca'] = ca
     known_chat_ids.add(chat_id)
+
+    print(f"[DEBUG] Selected ca: {ca} for name {state['name']}")
 
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
@@ -363,6 +371,8 @@ def schedule_report(chat_id, state, overwrite=False):
     }
 
     mark_as_reported(state['name'], state['date'])
+
+    print(f"[DEBUG] Scheduling report for {state['name']}, ca {state['ca']}, date {state['date']}, now {now}, required {required_datetime}")
 
     if now >= required_datetime:
         bot.edit_message_text("Đang gửi báo cáo...", chat_id, state['message_id'])
