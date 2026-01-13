@@ -75,12 +75,21 @@ try:
 except FileNotFoundError:
     pending_reports = []
 
-user_states = {}
+STATE_FILE = "user_states.json"
+try:
+    with open(STATE_FILE, 'r', encoding='utf-8') as f:
+        user_states = json.load(f)
+except FileNotFoundError:
+    user_states = {}
+
+def save_states():
+    with open(STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(user_states, f, ensure_ascii=False, indent=4)
+
 known_chat_ids = set()
 
 vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
 
-# Định nghĩa hàm trước scheduler
 def has_reported(name, date_str):
     return reported_data.get(name, {}).get(date_str, False)
 
@@ -186,7 +195,7 @@ def report_all_status(chat_id):
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler - đặt SAU tất cả hàm
+# Scheduler
 scheduler = BackgroundScheduler(timezone=vn_tz)
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5), timezone=vn_tz)
 scheduler.add_job(process_pending_reports, CronTrigger(hour='1,7,10,15', minute=1), timezone=vn_tz)
@@ -209,7 +218,7 @@ def handle_reportall(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id, text="Đang xử lý...")
     chat_id = call.message.chat.id
     selected_name = call.data.replace('name_', '')
     if selected_name not in NAME_OPTIONS:
@@ -222,18 +231,20 @@ def handle_name_callback(call):
     markup.add(InlineKeyboardButton("Ngày hiện tại", callback_data="date_today"))
     markup.add(InlineKeyboardButton("Tự chọn ngày khác", callback_data="date_custom"))
     sent_msg = bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
-    user_states[chat_id] = {
+    user_states[str(chat_id)] = {
         'step': 'choose_date_type',
         'name': selected_name,
         'message_id': sent_msg.message_id
     }
+    with open('user_states.json', 'w', encoding='utf-8') as f:
+        json.dump(user_states, f, ensure_ascii=False, indent=4)
     known_chat_ids.add(chat_id)
 
 @bot.callback_query_handler(func=lambda call: call.data in ["date_today", "date_custom"])
 def handle_date_type(call):
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id, text="Đang xử lý...")
     chat_id = call.message.chat.id
-    state = user_states.get(chat_id)
+    state = user_states.get(str(chat_id))
     if not state or state.get('step') != 'choose_date_type':
         return
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
@@ -246,17 +257,21 @@ def handle_date_type(call):
             markup.add(InlineKeyboardButton(ca, callback_data=ca))
         sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:", reply_markup=markup)
         state['message_id'] = sent_msg.message_id
+        with open('user_states.json', 'w', encoding='utf-8') as f:
+            json.dump(user_states, f, ensure_ascii=False, indent=4)
     else:
         state['step'] = 1
         bot.send_message(chat_id, "Nhập ngày báo cáo (dd/mm/yyyy):")
+        with open('user_states.json', 'w', encoding='utf-8') as f:
+            json.dump(user_states, f, ensure_ascii=False, indent=4)
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     chat_id = message.chat.id
-    if chat_id not in user_states:
+    state = user_states.get(str(chat_id))
+    if not state:
         bot.reply_to(message, "Gửi /report để bắt đầu báo cáo.")
         return
-    state = user_states[chat_id]
     if state['step'] == 1:
         date_str = message.text.strip()
         try:
@@ -269,28 +284,38 @@ def handle_message(message):
                 markup.add(InlineKeyboardButton(ca, callback_data=ca))
             sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
             state['message_id'] = sent_msg.message_id
+            with open('user_states.json', 'w', encoding='utf-8') as f:
+                json.dump(user_states, f, ensure_ascii=False, indent=4)
         except:
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id, text="Đang xử lý...")
     chat_id = call.message.chat.id
-    state = user_states.get(chat_id)
-    if state and state.get('step') == 'confirm_overwrite':
+    state = user_states.get(str(chat_id))
+    if not state:
+        print("[DEBUG] State not found for chat", chat_id)
+        return
+    if state.get('step') == 'confirm_overwrite':
         if call.data == 'yes_overwrite':
             schedule_report(chat_id, state, overwrite=True)
         else:
             bot.edit_message_text("Đã hủy. Gửi /report lại nhé!", chat_id, state['message_id'])
-            del user_states[chat_id]
+            del user_states[str(chat_id)]
+            with open('user_states.json', 'w', encoding='utf-8') as f:
+                json.dump(user_states, f, ensure_ascii=False, indent=4)
         return
-    if not state or state.get('step') != 2:
+    if state.get('step') != 2:
+        print("[DEBUG] Invalid step:", state.get('step'))
         return
     ca = call.data
     if ca not in CA_CONFIG:
         return
     state['ca'] = ca
     known_chat_ids.add(chat_id)
+    # Xóa nút chọn ca ngay
+    bot.edit_message_reply_markup(chat_id, state['message_id'], reply_markup=InlineKeyboardMarkup())
     if has_reported(state['name'], state['date']):
         markup = InlineKeyboardMarkup()
         markup.row(
@@ -299,10 +324,12 @@ def handle_callback(call):
         )
         config = CA_CONFIG[ca]
         bot.edit_message_text(
-            f"Đã báo ngày {state['date']}! Chắc chắn ghi đè với ca {ca} ({config['tinh_hinh']})?",
+            f"Đã báo ngày {state['date']}! Ghi đè với ca {ca} ({config['tinh_hinh']})?",
             chat_id, state['message_id'], reply_markup=markup
         )
         state['step'] = 'confirm_overwrite'
+        with open('user_states.json', 'w', encoding='utf-8') as f:
+            json.dump(user_states, f, ensure_ascii=False, indent=4)
         return
     schedule_report(chat_id, state, overwrite=False)
 
@@ -325,10 +352,7 @@ def schedule_report(chat_id, state, overwrite=False):
         success = submit_to_form(report_data)
         if success:
             note = "\n*(Ghi đè cũ)*" if overwrite else ""
-            bot.edit_message_text(
-                f"✅ Gửi thành công ca {state['ca']} ngày {state['date']}{note}!",
-                chat_id, state['message_id']
-            )
+            bot.edit_message_text(f"✅ Gửi thành công ca {state['ca']} ngày {state['date']}{note}!", chat_id, state['message_id'])
         else:
             bot.edit_message_text("Lỗi gửi form!", chat_id, state['message_id'])
     else:
@@ -340,7 +364,9 @@ def schedule_report(chat_id, state, overwrite=False):
             f"Đã nhận ca {state['ca']} ngày {state['date']}. Gửi tự động sau {min_hour:02d}:01",
             chat_id, state['message_id']
         )
-    del user_states[chat_id]
+    del user_states[str(chat_id)]
+    with open('user_states.json', 'w', encoding='utf-8') as f:
+        json.dump(user_states, f, ensure_ascii=False, indent=4)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -348,6 +374,7 @@ def webhook():
         try:
             update = Update.de_json(request.get_json())
             bot.process_new_updates([update])
+            print("Webhook received and processed")
         except Exception as e:
             print("Webhook error:", e)
     return '', 200
