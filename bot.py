@@ -8,6 +8,7 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+from pytz import timezone as pytz_timezone
 import atexit
 
 app = Flask(__name__)
@@ -68,7 +69,8 @@ except FileNotFoundError:
 user_states = {}
 known_chat_ids = set()
 
-scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
+vn_tz = pytz_timezone("Asia/Ho_Chi_Minh")
+scheduler = BackgroundScheduler(timezone=vn_tz)
 
 def has_reported(name, date_str):
     return reported_data.get(name, {}).get(date_str, False)
@@ -116,7 +118,7 @@ def submit_to_form(report):
 
 def process_pending_reports():
     global pending_reports
-    now = datetime.now()
+    now = datetime.now(vn_tz)
     to_submit = []
     remaining = []
 
@@ -124,7 +126,9 @@ def process_pending_reports():
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_datetime = datetime.combine(report_date, time(min_hour, 1))
+        required_time = time(min_hour, 1)
+        required_datetime = datetime.combine(report_date, required_time)
+        required_datetime = vn_tz.localize(required_datetime)
 
         if now >= required_datetime:
             to_submit.append(report)
@@ -150,7 +154,7 @@ def process_pending_reports():
     save_pending()
 
 def send_hourly_reminder():
-    now = datetime.now()
+    now = datetime.now(vn_tz)
     if not (8 <= now.hour <= 22):
         return
 
@@ -166,7 +170,7 @@ def send_hourly_reminder():
                 print(f"Lỗi gửi nhắc: {e}")
 
 def report_all_status(chat_id):
-    today = datetime.now().strftime("%d/%m/%Y")
+    today = datetime.now(vn_tz).strftime("%d/%m/%Y")
     status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
 
     for name in NAME_OPTIONS:
@@ -186,23 +190,23 @@ def report_all_status(chat_id):
 
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler jobs - Set timezone rõ ràng cho từng job
+# Scheduler jobs - Set timezone rõ ràng
 scheduler.add_job(
     process_pending_reports,
     IntervalTrigger(minutes=5),
-    timezone="Asia/Ho_Chi_Minh"
+    timezone=vn_tz
 )
 
 scheduler.add_job(
     process_pending_reports,
     CronTrigger(hour='8,14,17,22', minute=1),
-    timezone="Asia/Ho_Chi_Minh"
+    timezone=vn_tz
 )
 
 scheduler.add_job(
     send_hourly_reminder,
     CronTrigger(hour='8-22', minute=0),
-    timezone="Asia/Ho_Chi_Minh"
+    timezone=vn_tz
 )
 
 scheduler.start()
@@ -259,7 +263,7 @@ def handle_date_type(call):
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
 
     if call.data == "date_today":
-        today = datetime.now().strftime("%d/%m/%Y")
+        today = datetime.now(vn_tz).strftime("%d/%m/%Y")
         state['date'] = today
         state['step'] = 2
         markup = InlineKeyboardMarkup(row_width=2)
@@ -350,8 +354,10 @@ def schedule_report(chat_id, state, overwrite=False):
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    required_datetime = datetime.combine(report_date, time(min_hour, 1))
-    now = datetime.now()
+    required_time = time(min_hour, 1)
+    required_datetime = datetime.combine(report_date, required_time)
+    required_datetime = vn_tz.localize(required_datetime)
+    now = datetime.now(vn_tz)
 
     report_data = {
         'name': state['name'],
