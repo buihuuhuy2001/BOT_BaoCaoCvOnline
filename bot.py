@@ -19,7 +19,6 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Tự động set webhook
 WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
 try:
     bot.remove_webhook()
@@ -195,7 +194,6 @@ def report_all_status(chat_id):
         status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
     bot.send_message(chat_id, "\n".join(status_lines))
 
-# Scheduler
 scheduler = BackgroundScheduler(timezone=vn_tz)
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5), timezone=vn_tz)
 scheduler.add_job(process_pending_reports, CronTrigger(hour='1,7,10,15', minute=1), timezone=vn_tz)
@@ -203,7 +201,6 @@ scheduler.add_job(send_hourly_reminder, CronTrigger(hour='1-15', minute=0), time
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-# Handlers
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
@@ -296,44 +293,49 @@ def handle_callback(call):
     state = user_states.get(str(chat_id))
     if not state:
         print("[DEBUG] State not found for chat", chat_id)
+        bot.send_message(chat_id, "Lỗi trạng thái, vui lòng gửi /report lại!")
         return
-    if state.get('step') == 'confirm_overwrite':
-        if call.data == 'yes_overwrite':
-            schedule_report(chat_id, state, overwrite=True)
-        else:
-            bot.edit_message_text("Đã hủy. Gửi /report lại nhé!", chat_id, state['message_id'])
-            del user_states[str(chat_id)]
+    try:
+        # Xóa menu ngay lập tức
+        bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+        if state.get('step') == 'confirm_overwrite':
+            if call.data == 'yes_overwrite':
+                schedule_report(chat_id, state, overwrite=True)
+            else:
+                bot.send_message(chat_id, "Đã hủy. Gửi /report để thử lại!")
+                del user_states[str(chat_id)]
+                with open('user_states.json', 'w', encoding='utf-8') as f:
+                    json.dump(user_states, f, ensure_ascii=False, indent=4)
+            return
+        if state.get('step') != 2:
+            print("[DEBUG] Invalid step:", state.get('step'))
+            bot.send_message(chat_id, "Trạng thái không hợp lệ, gửi /report lại!")
+            return
+        ca = call.data
+        if ca not in CA_CONFIG:
+            bot.send_message(chat_id, "Ca không hợp lệ!")
+            return
+        state['ca'] = ca
+        known_chat_ids.add(chat_id)
+        if has_reported(state['name'], state['date']):
+            markup = InlineKeyboardMarkup()
+            markup.row(
+                InlineKeyboardButton("✅ Báo lại", callback_data='yes_overwrite'),
+                InlineKeyboardButton("❌ Hủy", callback_data='no_overwrite')
+            )
+            config = CA_CONFIG[ca]
+            bot.send_message(chat_id, f"Đã báo ngày {state['date']}! Ghi đè với ca {ca} ({config['tinh_hinh']})?", reply_markup=markup)
+            state['step'] = 'confirm_overwrite'
             with open('user_states.json', 'w', encoding='utf-8') as f:
                 json.dump(user_states, f, ensure_ascii=False, indent=4)
-        return
-    if state.get('step') != 2:
-        print("[DEBUG] Invalid step:", state.get('step'))
-        return
-    ca = call.data
-    if ca not in CA_CONFIG:
-        return
-    state['ca'] = ca
-    known_chat_ids.add(chat_id)
-    # Xóa nút chọn ca ngay
-    bot.edit_message_reply_markup(chat_id, state['message_id'], reply_markup=InlineKeyboardMarkup())
-    if has_reported(state['name'], state['date']):
-        markup = InlineKeyboardMarkup()
-        markup.row(
-            InlineKeyboardButton("✅ Báo lại", callback_data='yes_overwrite'),
-            InlineKeyboardButton("❌ Hủy", callback_data='no_overwrite')
-        )
-        config = CA_CONFIG[ca]
-        bot.edit_message_text(
-            f"Đã báo ngày {state['date']}! Ghi đè với ca {ca} ({config['tinh_hinh']})?",
-            chat_id, state['message_id'], reply_markup=markup
-        )
-        state['step'] = 'confirm_overwrite'
-        with open('user_states.json', 'w', encoding='utf-8') as f:
-            json.dump(user_states, f, ensure_ascii=False, indent=4)
-        return
-    schedule_report(chat_id, state, overwrite=False)
+            return
+        schedule_report(chat_id, state, overwrite=False)
+    except Exception as e:
+        print(f"[CALLBACK ERROR] {e}")
+        bot.send_message(chat_id, f"Lỗi xử lý: {str(e)}. Gửi /report lại nhé!")
 
 def schedule_report(chat_id, state, overwrite=False):
+    print(f"[SCHEDULE] Bắt đầu cho {state['name']}, ca {state['ca']}, date {state['date']}")
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
@@ -348,22 +350,23 @@ def schedule_report(chat_id, state, overwrite=False):
     }
     mark_as_reported(state['name'], state['date'])
     if now >= required_datetime:
-        bot.edit_message_text("Đang gửi...", chat_id, state['message_id'])
-        success = submit_to_form(report_data)
-        if success:
-            note = "\n*(Ghi đè cũ)*" if overwrite else ""
-            bot.edit_message_text(f"✅ Gửi thành công ca {state['ca']} ngày {state['date']}{note}!", chat_id, state['message_id'])
-        else:
-            bot.edit_message_text("Lỗi gửi form!", chat_id, state['message_id'])
+        try:
+            bot.send_message(chat_id, "Đang gửi báo cáo...")
+            success = submit_to_form(report_data)
+            if success:
+                note = "\n*(Ghi đè cũ)*" if overwrite else ""
+                bot.send_message(chat_id, f"✅ Gửi thành công ca {state['ca']} ngày {state['date']}{note}!")
+            else:
+                bot.send_message(chat_id, "Lỗi gửi form, thử lại sau!")
+        except Exception as e:
+            print(f"[SCHEDULE ERROR] {e}")
+            bot.send_message(chat_id, "Lỗi khi gửi, thử lại!")
     else:
         global pending_reports
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
-        bot.edit_message_text(
-            f"Đã nhận ca {state['ca']} ngày {state['date']}. Gửi tự động sau {min_hour:02d}:01",
-            chat_id, state['message_id']
-        )
+        bot.send_message(chat_id, f"Đã nhận ca {state['ca']} ngày {state['date']}. Gửi tự động sau {min_hour:02d}:01 ⏰")
     del user_states[str(chat_id)]
     with open('user_states.json', 'w', encoding='utf-8') as f:
         json.dump(user_states, f, ensure_ascii=False, indent=4)
@@ -374,7 +377,7 @@ def webhook():
         try:
             update = Update.de_json(request.get_json())
             bot.process_new_updates([update])
-            print("Webhook received and processed")
+            print("Webhook received")
         except Exception as e:
             print("Webhook error:", e)
     return '', 200
