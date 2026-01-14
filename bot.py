@@ -19,6 +19,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# Tự động set webhook
 WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
 try:
     bot.remove_webhook()
@@ -140,7 +141,7 @@ def process_pending_reports():
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
         min_hour = CA_CONFIG[report['ca']]['min_hour']
-        required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
+        required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
         if now >= required_datetime:
             to_submit.append(report)
         else:
@@ -339,7 +340,7 @@ def schedule_report(chat_id, state, overwrite=False):
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
-    required_datetime = vn_tz.localize(datetime.combine(report_date, time(min_hour, 1)))
+    required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
     now = datetime.now(vn_tz)
     report_data = {
         'name': state['name'],
