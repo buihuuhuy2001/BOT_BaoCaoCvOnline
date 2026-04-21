@@ -1,9 +1,10 @@
 import os
+import calendar
 import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -45,20 +46,35 @@ entry_ids = {
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGKNhwuh3BxtSfCOADwBhao6w/formResponse"
 
 CA_CONFIG = {
-    'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
-    'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
-    'Ca 3': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
-    'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Xử lý các sự cố kỹ thuật phát sinh và những tình huống khẩn cấp', 'cong_viec_2': 'Bảo trì , bảo dưỡng thiết bị máy móc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
-    'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
-    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
-    'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Ca 1': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
+    'Ca 2': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
+    'Hanh chinh': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Xu ly cac su co ky thuat phat sinh va nhung tinh huong khan cap', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
+    'Nghi phep': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Nghi bu - Nghi Chu nhat': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Khac': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
-NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang"]
+# Tên hiển thị cho CA_CONFIG keys (giữ tiếng Việt để gửi form)
+CA_DISPLAY = {
+    'Ca 1': 'Ca 1',
+    'Ca 2': 'Ca 2',
+    'Ca 3': 'Ca 3',
+    'Hanh chinh': 'Hành chính',
+    'Nghi phep': 'Nghỉ phép',
+    'Nghi bu - Nghi Chu nhat': 'Nghỉ bù - Nghỉ Chủ nhật',
+    'Khac': 'Khác',
+}
+
+NAME_OPTIONS = ["Bui Huu Huy", "Tran Van Quang"]
+NAME_DISPLAY = {
+    "Bui Huu Huy": "Bùi Hữu Huy",
+    "Tran Van Quang": "Trần Văn Quang",
+}
 
 USER_PROFILES = {
-    "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
-    "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"}
+    "Bui Huu Huy": {"chuc_vu": "Nhan vien Ky thuat - Cong nghe", "dia_diem": "TTP QL279 - Cao toc"},
+    "Tran Van Quang": {"chuc_vu": "Nhan vien Ky thuat - Cong nghe", "dia_diem": "TTP TL242 - Cao toc"},
 }
 
 REPORTED_FILE = "reported.json"
@@ -87,7 +103,6 @@ def save_states():
         json.dump(user_states, f, ensure_ascii=False, indent=4)
 
 known_chat_ids = set()
-
 vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
 
 def has_reported(name, date_str):
@@ -110,11 +125,11 @@ def submit_to_form(report):
     day, month, year = map(int, report['date'].split('/'))
     data = {
         'fvv': '1', 'pageHistory': '0,1', 'fbzx': '1', 'submissionTimestamp': '-1',
-        f'entry.{entry_ids["ho_ten"]}': report['name'],
+        f'entry.{entry_ids["ho_ten"]}': NAME_DISPLAY.get(report['name'], report['name']),
         f'entry.{entry_ids["ngay_base"]}_year': str(year),
         f'entry.{entry_ids["ngay_base"]}_month': f'{month:02d}',
         f'entry.{entry_ids["ngay_base"]}_day': f'{day:02d}',
-        f'entry.{entry_ids["ca_lam_viec"]}': report['ca'],
+        f'entry.{entry_ids["ca_lam_viec"]}': CA_DISPLAY.get(report['ca'], report['ca']),
         f'entry.{entry_ids["chuc_vu"]}': user_info['chuc_vu'],
         f'entry.{entry_ids["dia_diem"]}': user_info['dia_diem'],
         f'entry.{entry_ids["tinh_hinh_ca"]}': config['tinh_hinh'],
@@ -150,16 +165,22 @@ def process_pending_reports():
         success = submit_to_form(report)
         if success:
             mark_as_reported(report['name'], report['date'])
-            if 'chat_id' in report and 'message_id' in report:
+            if 'chat_id' in report and report.get('message_id'):
                 try:
                     bot.edit_message_text(
-                        f"✅ Báo cáo ngày {report['date']}, ca {report['ca']} đã được gửi tự động lúc {now.strftime('%H:%M')}!\n"
-                        f"Thông tin: {report['name']} - {USER_PROFILES[report['name']]['chuc_vu']} - {USER_PROFILES[report['name']]['dia_diem']}\n"
-                        f"- Ca: {report['ca']}\n- Tình hình: {CA_CONFIG[report['ca']]['tinh_hinh']}",
+                        f"Bao cao ngay {report['date']}, ca {CA_DISPLAY.get(report['ca'], report['ca'])} da duoc gui tu dong luc {now.strftime('%H:%M')}!",
                         report['chat_id'], report['message_id']
                     )
                 except Exception as e:
-                    print("Lỗi thông báo pending:", e)
+                    print("Loi thong bao pending:", e)
+            else:
+                for cid in known_chat_ids:
+                    try:
+                        name_display = NAME_DISPLAY.get(report['name'], report['name'])
+                        ca_display = CA_DISPLAY.get(report['ca'], report['ca'])
+                        bot.send_message(cid, f"[TU DONG] Da gui bao cao: {name_display} - {report['date']} - {ca_display}")
+                    except Exception:
+                        pass
     pending_reports = remaining
     save_pending()
 
@@ -168,31 +189,36 @@ def send_hourly_reminder():
     if not (8 <= now.hour <= 22):
         return
     today = now.strftime("%d/%m/%Y")
-    unreported = [name for name in NAME_OPTIONS if not has_reported(name, today)]
+    unreported = []
+    for name in NAME_OPTIONS:
+        if not has_reported(name, today):
+            pending_today = any(r['date'] == today and r['name'] == name for r in pending_reports)
+            if not pending_today:
+                unreported.append(NAME_DISPLAY.get(name, name))
     if unreported:
-        message = f"Hôm nay ({today}) vẫn còn người chưa báo cáo ca: {', '.join(unreported)}. Ai chưa thì gửi /report nhé! 😊"
+        msg = f"Hom nay ({today}) van con nguoi chua bao cao ca: {', '.join(unreported)}. Ai chua thi gui /report nhe!"
         for chat_id in known_chat_ids:
             try:
-                bot.send_message(chat_id, message)
+                bot.send_message(chat_id, msg)
             except Exception as e:
-                print(f"Lỗi gửi nhắc: {e}")
+                print(f"Loi gui nhac: {e}")
 
 def report_all_status(chat_id):
     today = datetime.now(vn_tz).strftime("%d/%m/%Y")
-    status_lines = [f"Tình hình báo cáo hôm nay ({today}):"]
+    status_lines = [f"Tinh hinh bao cao hom nay ({today}):"]
     for name in NAME_OPTIONS:
+        display = NAME_DISPLAY.get(name, name)
         if has_reported(name, today):
-            status_lines.append(f"- {name}: Đã báo hôm nay")
+            status_lines.append(f"- {display}: Da bao hom nay")
         else:
             pending_for_name = [r for r in pending_reports if r['date'] == today and r['name'] == name]
             if pending_for_name:
                 for p in pending_for_name:
                     min_hour = CA_CONFIG[p['ca']]['min_hour']
-                    status_lines.append(f"- {name}: Đang chờ gửi Ca {p['ca']} (sau {min_hour:02d}:01)")
+                    ca_display = CA_DISPLAY.get(p['ca'], p['ca'])
+                    status_lines.append(f"- {display}: Dang cho gui {ca_display} (sau {min_hour:02d}:01)")
             else:
-                status_lines.append(f"- {name}: Chưa báo hôm nay")
-    if len(status_lines) == 1:
-        status_lines.append("Tất cả đã báo hôm nay! Tuyệt vời! 🎉")
+                status_lines.append(f"- {display}: Chua bao hom nay")
     bot.send_message(chat_id, "\n".join(status_lines))
 
 scheduler = BackgroundScheduler(timezone=vn_tz)
@@ -202,13 +228,19 @@ scheduler.add_job(send_hourly_reminder, CronTrigger(hour='1-15', minute=0), time
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
+
+# ================================================================
+#  /report -- Bao cao 1 ngay
+# ================================================================
+
 @bot.message_handler(commands=['start', 'report'])
 def start_report(message):
     chat_id = message.chat.id
+    known_chat_ids.add(chat_id)
     markup = InlineKeyboardMarkup(row_width=1)
     for name in NAME_OPTIONS:
-        markup.add(InlineKeyboardButton(name, callback_data=f"name_{name}"))
-    bot.reply_to(message, "Chọn tên của bạn để bắt đầu báo cáo:", reply_markup=markup)
+        markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"name_{name}"))
+    bot.reply_to(message, "Chon ten cua ban de bat dau bao cao:", reply_markup=markup)
 
 @bot.message_handler(commands=['reportall'])
 def handle_reportall(message):
@@ -216,31 +248,30 @@ def handle_reportall(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
-    bot.answer_callback_query(call.id, text="Đang xử lý...")
+    bot.answer_callback_query(call.id, text="Dang xu ly...")
     chat_id = call.message.chat.id
     selected_name = call.data.replace('name_', '')
     if selected_name not in NAME_OPTIONS:
         return
     bot.edit_message_text(
-        f"Đã chọn: {selected_name}\nChọn loại ngày báo cáo:",
+        f"Da chon: {NAME_DISPLAY[selected_name]}\nChon loai ngay bao cao:",
         chat_id, call.message.message_id
     )
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton("Ngày hiện tại", callback_data="date_today"))
-    markup.add(InlineKeyboardButton("Tự chọn ngày khác", callback_data="date_custom"))
-    sent_msg = bot.send_message(chat_id, "Chọn ngày báo cáo:", reply_markup=markup)
+    markup.add(InlineKeyboardButton("Ngay hien tai", callback_data="date_today"))
+    markup.add(InlineKeyboardButton("Tu chon ngay khac", callback_data="date_custom"))
+    sent_msg = bot.send_message(chat_id, "Chon ngay bao cao:", reply_markup=markup)
     user_states[str(chat_id)] = {
         'step': 'choose_date_type',
         'name': selected_name,
         'message_id': sent_msg.message_id
     }
-    with open('user_states.json', 'w', encoding='utf-8') as f:
-        json.dump(user_states, f, ensure_ascii=False, indent=4)
+    save_states()
     known_chat_ids.add(chat_id)
 
 @bot.callback_query_handler(func=lambda call: call.data in ["date_today", "date_custom"])
 def handle_date_type(call):
-    bot.answer_callback_query(call.id, text="Đang xử lý...")
+    bot.answer_callback_query(call.id, text="Dang xu ly...")
     chat_id = call.message.chat.id
     state = user_states.get(str(chat_id))
     if not state or state.get('step') != 'choose_date_type':
@@ -251,26 +282,259 @@ def handle_date_type(call):
         state['date'] = today
         state['step'] = 2
         markup = InlineKeyboardMarkup(row_width=2)
-        for ca in CA_CONFIG:
-            markup.add(InlineKeyboardButton(ca, callback_data=ca))
-        sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:", reply_markup=markup)
+        for ca_key in CA_CONFIG:
+            markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=ca_key))
+        sent_msg = bot.send_message(chat_id, f"Ngay bao cao: {today} (hom nay)\nChon ca lam viec:", reply_markup=markup)
         state['message_id'] = sent_msg.message_id
-        with open('user_states.json', 'w', encoding='utf-8') as f:
-            json.dump(user_states, f, ensure_ascii=False, indent=4)
+        save_states()
     else:
         state['step'] = 1
-        bot.send_message(chat_id, "Nhập ngày báo cáo (dd/mm/yyyy):")
-        with open('user_states.json', 'w', encoding='utf-8') as f:
-            json.dump(user_states, f, ensure_ascii=False, indent=4)
+        bot.send_message(chat_id, "Nhap ngay bao cao (dd/mm/yyyy):")
+        save_states()
+
+
+# ================================================================
+#  /reportmissing -- Bao cao / len lich nhieu ngay cung luc
+# ================================================================
+
+def parse_day_input(text, year, month):
+    """Parse '1, 3, 5-10, 15' thanh list date_str dd/mm/yyyy."""
+    max_day = calendar.monthrange(year, month)[1]
+    days = set()
+    parts = [p.strip() for p in text.replace('\uff0c', ',').split(',')]
+    for part in parts:
+        if '-' in part:
+            bounds = part.split('-')
+            if len(bounds) == 2:
+                try:
+                    start, end = int(bounds[0].strip()), int(bounds[1].strip())
+                    for d in range(start, end + 1):
+                        if 1 <= d <= max_day:
+                            days.add(d)
+                except ValueError:
+                    pass
+        else:
+            try:
+                d = int(part)
+                if 1 <= d <= max_day:
+                    days.add(d)
+            except ValueError:
+                pass
+    return [f"{d:02d}/{month:02d}/{year}" for d in sorted(days)]
+
+
+def _ask_ca_for_day(chat_id, state):
+    """Hoi ca cho tung ngay lan luot."""
+    dates = state['rm_dates']
+    idx = state['rm_index']
+    if idx >= len(dates):
+        _finish_rm(chat_id, state)
+        return
+    date_str = dates[idx]
+    markup = InlineKeyboardMarkup(row_width=2)
+    for ca_key in CA_CONFIG:
+        markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"rm_ca_{ca_key}"))
+    bot.send_message(
+        chat_id,
+        f"Ngay {date_str} ({idx + 1}/{len(dates)})\nChon ca lam viec:",
+        reply_markup=markup
+    )
+
+
+def _finish_rm(chat_id, state):
+    """Gui ngay hoac len lich pending cho tat ca ngay trong rm_ca_map."""
+    global pending_reports
+    now = datetime.now(vn_tz)
+    name = state['rm_name']
+    ca_map = state['rm_ca_map']
+    sent_now, scheduled, errors = [], [], []
+
+    for date_str, ca in ca_map.items():
+        report_data = {
+            'name': name,
+            'date': date_str,
+            'ca': ca,
+            'chat_id': chat_id,
+            'message_id': None
+        }
+        day, month, year = map(int, date_str.split('/'))
+        min_hour = CA_CONFIG[ca]['min_hour']
+        required_dt = datetime.combine(
+            datetime(year, month, day).date(), time(min_hour, 1)
+        ).replace(tzinfo=vn_tz)
+
+        # Xoa pending cu neu co
+        pending_reports = [
+            r for r in pending_reports
+            if not (r['name'] == name and r['date'] == date_str)
+        ]
+        mark_as_reported(name, date_str)
+
+        if now >= required_dt:
+            ok = submit_to_form(report_data)
+            if ok:
+                sent_now.append(f"{date_str} ({CA_DISPLAY.get(ca, ca)})")
+            else:
+                errors.append(f"{date_str} (loi gui)")
+        else:
+            pending_reports.append(report_data)
+            scheduled.append(f"{date_str} ({CA_DISPLAY.get(ca, ca)}) - tu gui sau {min_hour:02d}:01")
+
+    save_pending()
+
+    name_display = NAME_DISPLAY.get(name, name)
+    lines = [f"Ket qua len lich cho {name_display}:"]
+    if sent_now:
+        lines.append("\nDa gui ngay:")
+        lines += [f"  - {x}" for x in sent_now]
+    if scheduled:
+        lines.append("\nDa len lich gui tu dong:")
+        lines += [f"  - {x}" for x in scheduled]
+    if errors:
+        lines.append("\nLoi:")
+        lines += [f"  - {x}" for x in errors]
+
+    bot.send_message(chat_id, "\n".join(lines))
+    if str(chat_id) in user_states:
+        del user_states[str(chat_id)]
+    save_states()
+
+
+def _send_day_input_prompt(chat_id, state, year, month):
+    state['rm_year'] = year
+    state['rm_month'] = month
+    state['step'] = 'rm_input_days'
+    save_states()
+    max_day = calendar.monthrange(year, month)[1]
+    bot.send_message(
+        chat_id,
+        f"Thang {month:02d}/{year} (co {max_day} ngay)\n\n"
+        f"Nhap cac ngay can bao cao:\n"
+        f"- Ngay le dung dau ,   vi du: 1, 3, 7\n"
+        f"- Ngay lien tiep dung dau -   vi du: 5-10\n"
+        f"- Ket hop: 1, 3, 5-10, 15, 20-25\n\n"
+        f"(Ngay tuong lai se duoc len lich gui tu dong)"
+    )
+
+
+@bot.message_handler(commands=['reportmissing'])
+def start_report_missing(message):
+    chat_id = message.chat.id
+    known_chat_ids.add(chat_id)
+    markup = InlineKeyboardMarkup(row_width=1)
+    for name in NAME_OPTIONS:
+        markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"rm_name_{name}"))
+    bot.reply_to(message, "Bao cao / Len lich nhieu ngay\nChon ten cua ban:", reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rm_name_'))
+def handle_rm_name(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    name = call.data.replace('rm_name_', '')
+    if name not in NAME_OPTIONS:
+        return
+    now = datetime.now(vn_tz)
+    cur_m, cur_y = now.month, now.year
+    prev_m = cur_m - 1 if cur_m > 1 else 12
+    prev_y = cur_y if cur_m > 1 else cur_y - 1
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton(f"Thang {cur_m}/{cur_y} (thang nay)", callback_data=f"rm_month_{cur_y}_{cur_m}"))
+    markup.add(InlineKeyboardButton(f"Thang {prev_m}/{prev_y} (thang truoc)", callback_data=f"rm_month_{prev_y}_{prev_m}"))
+    markup.add(InlineKeyboardButton("Nhap thang khac", callback_data="rm_month_custom"))
+    bot.edit_message_text(
+        f"Da chon: {NAME_DISPLAY[name]}\nChon thang can bao cao:",
+        chat_id, call.message.message_id,
+        reply_markup=markup
+    )
+    user_states[str(chat_id)] = {'step': 'rm_choose_month', 'rm_name': name}
+    save_states()
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rm_month_'))
+def handle_rm_month(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'rm_choose_month':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    suffix = call.data.replace('rm_month_', '')
+    if suffix == 'custom':
+        state['step'] = 'rm_input_month'
+        save_states()
+        bot.send_message(chat_id, "Nhap thang/nam can bao (dinh dang mm/yyyy, vi du: 03/2025):")
+        return
+    year, month = int(suffix.split('_')[0]), int(suffix.split('_')[1])
+    _send_day_input_prompt(chat_id, state, year, month)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rm_ca_'))
+def handle_rm_ca(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'rm_pick_ca':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    ca = call.data.replace('rm_ca_', '')
+    if ca not in CA_CONFIG:
+        return
+    dates = state['rm_dates']
+    idx = state['rm_index']
+    state['rm_ca_map'][dates[idx]] = ca
+    state['rm_index'] = idx + 1
+    save_states()
+    _ask_ca_for_day(chat_id, state)
+
+
+# ================================================================
+#  Message handler (nhap text)
+# ================================================================
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     chat_id = message.chat.id
     state = user_states.get(str(chat_id))
     if not state:
-        bot.reply_to(message, "Gửi /report để bắt đầu báo cáo.")
+        bot.reply_to(message, "Gui /report de bao cao 1 ngay, hoac /reportmissing de len lich nhieu ngay.")
         return
-    if state['step'] == 1:
+
+    # /reportmissing buoc 1: nhap thang tu chon
+    if state.get('step') == 'rm_input_month':
+        text = message.text.strip()
+        try:
+            parts = text.split('/')
+            month, year = int(parts[0]), int(parts[1])
+            assert 1 <= month <= 12 and year >= 2000
+            _send_day_input_prompt(chat_id, state, year, month)
+        except Exception:
+            bot.reply_to(message, "Sai dinh dang! Nhap lai mm/yyyy, vi du: 03/2025")
+        return
+
+    # /reportmissing buoc 2: nhap danh sach ngay
+    if state.get('step') == 'rm_input_days':
+        text = message.text.strip()
+        year = state['rm_year']
+        month = state['rm_month']
+        dates = parse_day_input(text, year, month)
+        if not dates:
+            bot.reply_to(message, "Khong tim thay ngay hop le! Nhap lai, vi du: 1, 3, 5-10")
+            return
+        state['rm_dates'] = dates
+        state['rm_index'] = 0
+        state['rm_ca_map'] = {}
+        state['step'] = 'rm_pick_ca'
+        save_states()
+        bot.send_message(
+            chat_id,
+            f"Da nhan {len(dates)} ngay: {', '.join(dates)}\n\nBat dau chon ca cho tung ngay:"
+        )
+        _ask_ca_for_day(chat_id, state)
+        return
+
+    # /report: nhap ngay tu chon
+    if state.get('step') == 1:
         date_str = message.text.strip()
         try:
             day, month, year = map(int, date_str.split('/'))
@@ -278,65 +542,68 @@ def handle_message(message):
             state['date'] = date_str
             state['step'] = 2
             markup = InlineKeyboardMarkup(row_width=2)
-            for ca in CA_CONFIG:
-                markup.add(InlineKeyboardButton(ca, callback_data=ca))
-            sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
+            for ca_key in CA_CONFIG:
+                markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=ca_key))
+            sent_msg = bot.send_message(chat_id, f"Ngay bao cao: {date_str}\nChon ca lam viec:", reply_markup=markup)
             state['message_id'] = sent_msg.message_id
-            with open('user_states.json', 'w', encoding='utf-8') as f:
-                json.dump(user_states, f, ensure_ascii=False, indent=4)
-        except:
-            bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
+            save_states()
+        except Exception:
+            bot.reply_to(message, "Ngay sai dinh dang! Nhap lai dd/mm/yyyy.")
+
+
+# ================================================================
+#  Callback handler chung (cho /report)
+# ================================================================
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    bot.answer_callback_query(call.id, text="Đang xử lý...")
+    bot.answer_callback_query(call.id, text="Dang xu ly...")
     chat_id = call.message.chat.id
     state = user_states.get(str(chat_id))
     if not state:
         print("[DEBUG] State not found for chat", chat_id)
-        bot.send_message(chat_id, "Lỗi trạng thái, vui lòng gửi /report lại!")
+        bot.send_message(chat_id, "Loi trang thai, vui long gui /report lai!")
         return
     try:
-        # Xóa menu ngay lập tức
         bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
         if state.get('step') == 'confirm_overwrite':
             if call.data == 'yes_overwrite':
                 schedule_report(chat_id, state, overwrite=True)
             else:
-                bot.send_message(chat_id, "Đã hủy. Gửi /report để thử lại!")
+                bot.send_message(chat_id, "Da huy. Gui /report de thu lai!")
                 del user_states[str(chat_id)]
-                with open('user_states.json', 'w', encoding='utf-8') as f:
-                    json.dump(user_states, f, ensure_ascii=False, indent=4)
+                save_states()
             return
         if state.get('step') != 2:
             print("[DEBUG] Invalid step:", state.get('step'))
-            bot.send_message(chat_id, "Trạng thái không hợp lệ, gửi /report lại!")
+            bot.send_message(chat_id, "Trang thai khong hop le, gui /report lai!")
             return
         ca = call.data
         if ca not in CA_CONFIG:
-            bot.send_message(chat_id, "Ca không hợp lệ!")
+            bot.send_message(chat_id, "Ca khong hop le!")
             return
         state['ca'] = ca
         known_chat_ids.add(chat_id)
         if has_reported(state['name'], state['date']):
             markup = InlineKeyboardMarkup()
             markup.row(
-                InlineKeyboardButton("✅ Báo lại", callback_data='yes_overwrite'),
-                InlineKeyboardButton("❌ Hủy", callback_data='no_overwrite')
+                InlineKeyboardButton("Bao lai", callback_data='yes_overwrite'),
+                InlineKeyboardButton("Huy", callback_data='no_overwrite')
             )
+            ca_display = CA_DISPLAY.get(ca, ca)
             config = CA_CONFIG[ca]
-            bot.send_message(chat_id, f"Đã báo ngày {state['date']}! Ghi đè với ca {ca} ({config['tinh_hinh']})?", reply_markup=markup)
+            bot.send_message(chat_id, f"Da bao ngay {state['date']}! Ghi de voi {ca_display} ({config['tinh_hinh']})?", reply_markup=markup)
             state['step'] = 'confirm_overwrite'
-            with open('user_states.json', 'w', encoding='utf-8') as f:
-                json.dump(user_states, f, ensure_ascii=False, indent=4)
+            save_states()
             return
         schedule_report(chat_id, state, overwrite=False)
     except Exception as e:
         print(f"[CALLBACK ERROR] {e}")
-        bot.send_message(chat_id, f"Lỗi xử lý: {str(e)}. Gửi /report lại nhé!")
+        bot.send_message(chat_id, f"Loi xu ly: {str(e)}. Gui /report lai nhe!")
+
 
 def schedule_report(chat_id, state, overwrite=False):
-    print(f"[SCHEDULE] Bắt đầu cho {state['name']}, ca {state['ca']}, date {state['date']}")
+    print(f"[SCHEDULE] Bat dau cho {state['name']}, ca {state['ca']}, date {state['date']}")
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
     min_hour = CA_CONFIG[state['ca']]['min_hour']
@@ -352,25 +619,31 @@ def schedule_report(chat_id, state, overwrite=False):
     mark_as_reported(state['name'], state['date'])
     if now >= required_datetime:
         try:
-            bot.send_message(chat_id, "Đang gửi báo cáo...")
+            bot.send_message(chat_id, "Dang gui bao cao...")
             success = submit_to_form(report_data)
             if success:
-                note = "\n*(Ghi đè cũ)*" if overwrite else ""
-                bot.send_message(chat_id, f"✅ Gửi thành công ca {state['ca']} ngày {state['date']}{note}!")
+                note = " (Ghi de cu)" if overwrite else ""
+                ca_display = CA_DISPLAY.get(state['ca'], state['ca'])
+                bot.send_message(chat_id, f"Gui thanh cong {ca_display} ngay {state['date']}{note}!")
             else:
-                bot.send_message(chat_id, "Lỗi gửi form, thử lại sau!")
+                bot.send_message(chat_id, "Loi gui form, thu lai sau!")
         except Exception as e:
             print(f"[SCHEDULE ERROR] {e}")
-            bot.send_message(chat_id, "Lỗi khi gửi, thử lại!")
+            bot.send_message(chat_id, "Loi khi gui, thu lai!")
     else:
         global pending_reports
         pending_reports = [r for r in pending_reports if not (r['name'] == state['name'] and r['date'] == state['date'])]
         pending_reports.append(report_data)
         save_pending()
-        bot.send_message(chat_id, f"Đã nhận ca {state['ca']} ngày {state['date']}. Gửi tự động sau {min_hour:02d}:01 ⏰")
+        ca_display = CA_DISPLAY.get(state['ca'], state['ca'])
+        bot.send_message(chat_id, f"Da nhan {ca_display} ngay {state['date']}. Tu gui sau {min_hour:02d}:01")
     del user_states[str(chat_id)]
-    with open('user_states.json', 'w', encoding='utf-8') as f:
-        json.dump(user_states, f, ensure_ascii=False, indent=4)
+    save_states()
+
+
+# ================================================================
+#  Flask routes
+# ================================================================
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
