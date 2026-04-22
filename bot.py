@@ -97,7 +97,22 @@ vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
 
 def has_reported(name, date_str):
     return reported_data.get(name, {}).get(date_str, False)
+def get_missing_days(name, year, month):
+    today = datetime.now(vn_tz).date()
+    max_day = calendar.monthrange(year, month)[1]
+    missing = []
 
+    for d in range(1, max_day + 1):
+        date_obj = datetime(year, month, d).date()
+        if date_obj > today:
+            continue
+
+        date_str = f"{d:02d}/{month:02d}/{year}"
+        if not has_reported(name, date_str):
+            missing.append(date_str)
+
+    return missing
+    
 def mark_as_reported(name, date_str):
     if name not in reported_data:
         reported_data[name] = {}
@@ -244,6 +259,22 @@ def start_report(message):
         markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"name_{name}"))
     bot.reply_to(message, "Chọn tên của bạn để bắt đầu báo cáo:", reply_markup=markup)
 
+@bot.message_handler(commands=['missing'])
+def handle_missing(message):
+    chat_id = message.chat.id
+    known_chat_ids.add(chat_id)
+
+    markup = InlineKeyboardMarkup(row_width=1)
+    for name in NAME_OPTIONS:
+        markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"ms_name_{name}"))
+
+    bot.reply_to(message, "📊 Kiểm tra báo cáo tháng\nChọn tên:", reply_markup=markup)
+
+
+@bot.message_handler(commands=['reportall'])
+def handle_reportall(message):
+    report_all_status(message.chat.id)
+    
 @bot.message_handler(commands=['reportall'])
 def handle_reportall(message):
     report_all_status(message.chat.id)
@@ -553,10 +584,81 @@ def handle_message(message):
             bot.reply_to(message, "Ngày sai định dạng! Nhập lại dd/mm/yyyy.")
 
 
+
 # ================================================================
 #  Callback handler chung (cho /report)
 # ================================================================
+@bot.callback_query_handler(func=lambda call: call.data.startswith('ms_name_'))
+def handle_ms_name(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
 
+    name = call.data.replace('ms_name_', '')
+    if name not in NAME_OPTIONS:
+        return
+
+    now = datetime.now(vn_tz)
+    year, month = now.year, now.month
+    today = now.day
+
+    missing_days = get_missing_days(name, year, month)
+
+    if not missing_days:
+        bot.send_message(chat_id, f"✅ {NAME_DISPLAY[name]} đã báo đủ tháng {month:02d}/{year}")
+        return
+
+    reported_count = today - len(missing_days)
+
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.row(
+        InlineKeyboardButton("Cập nhật", callback_data="ms_yes"),
+        InlineKeyboardButton("Không", callback_data="ms_no")
+    )
+
+    bot.send_message(
+        chat_id,
+        f"📊 Thống kê tháng {month:02d}/{year}\n\n"
+        f"👤 {NAME_DISPLAY[name]}\n"
+        f"✔️ Đã báo: {reported_count} ngày\n"
+        f"❌ Chưa báo: {len(missing_days)} ngày\n\n"
+        f"{', '.join(missing_days)}\n\n"
+        f"Bạn có muốn bổ sung không?",
+        reply_markup=markup
+    )
+
+    user_states[str(chat_id)] = {
+        'step': 'ms_confirm',
+        'rm_name': name,
+        'rm_dates': missing_days
+    }
+    save_states()
+
+
+@bot.callback_query_handler(func=lambda call: call.data in ["ms_yes", "ms_no"])
+def handle_missing_confirm(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'ms_confirm':
+        return
+
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+
+    if call.data == "ms_no":
+        bot.send_message(chat_id, "OK, bỏ qua 👍")
+        del user_states[str(chat_id)]
+        save_states()
+        return
+
+    state['step'] = 'rm_pick_ca'
+    state['rm_index'] = 0
+    state['rm_ca_map'] = {}
+    save_states()
+
+    bot.send_message(chat_id, "Bắt đầu bổ sung từng ngày...")
+    _ask_ca_for_day(chat_id, state)
+    
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     bot.answer_callback_query(call.id, text="Đang xử lý...")
