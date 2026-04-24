@@ -39,13 +39,13 @@ entry_ids = {
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGKNhwuh3BxtSfCOADwBhao6w/formResponse"
 
 CA_CONFIG = {
-    'Ca 1': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
-    'Ca 2': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
-    'Ca 3': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Ho tro van hanh thu phi', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': 'Hoan thanh cac nhiem vu duoc giao khac', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
-    'Hành chính': {'tinh_hinh': 'Binh thuong', 'cong_viec_1': 'Xu ly cac su co ky thuat phat sinh va nhung tinh huong khan cap', 'cong_viec_2': 'Bao tri , bao duong thiet bi may moc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
-    'Nghỉ phép': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
-    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
-    'Khác': {'tinh_hinh': 'Khac', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
+    'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
+    'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Xử lý các sự cố phát sinh và những tình huống khẩn cấp', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
+    'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
 # Tên hiển thị cho CA_CONFIG keys (giữ tiếng Việt để gửi form)
