@@ -885,6 +885,18 @@ def set_webhook_route():
     except Exception as e:
         return f"Error: {e}", 500
 
+@app.route('/debug')
+def debug():
+    try:
+        spreadsheet = _get_sheet()
+        sheets = [ws.title for ws in spreadsheet.worksheets()]
+        reported_ws = _ensure_sheet(spreadsheet, "reported", ["name", "date"])
+        rows = reported_ws.get_all_records()
+        return f"Sheets OK! Tabs: {sheets} | Reported rows: {len(rows)} | Data: {rows[:5]}", 200
+    except Exception as e:
+        import traceback
+        return f"ERROR: {e}\n{traceback.format_exc()}", 500
+
 @app.route('/')
 def health():
     return "Bot alive", 200
