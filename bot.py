@@ -133,9 +133,13 @@ def _load_states():
         print(f"Lỗi load states: {e}")
         return {}
 
+print("[INIT] Đang kết nối Google Sheets...")
 reported_data = _load_reported()
+print(f"[INIT] Loaded reported: {sum(len(v) for v in reported_data.values())} records")
 pending_reports = _load_pending()
+print(f"[INIT] Loaded pending: {len(pending_reports)} records")
 user_states = _load_states()
+print(f"[INIT] Loaded states: {len(user_states)} records")
 
 def save_states():
     try:
@@ -174,11 +178,15 @@ def mark_as_reported(name, date_str):
         reported_data[name] = {}
     reported_data[name][date_str] = True
     try:
+        print(f"[SHEETS] Đang ghi reported: {name} - {date_str}")
         spreadsheet = _get_sheet()
         ws = _ensure_sheet(spreadsheet, "reported", ["name", "date"])
         ws.append_row([name, date_str])
+        print(f"[SHEETS] Ghi reported OK: {name} - {date_str}")
     except Exception as e:
-        print(f"Lỗi ghi reported: {e}")
+        print(f"[SHEETS ERROR] Lỗi ghi reported: {e}")
+        import traceback
+        traceback.print_exc()
 
 def save_pending():
     try:
