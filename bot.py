@@ -1,5 +1,7 @@
 import os
 import calendar
+import gspread
+from google.oauth2.service_account import Credentials
 import telebot
 from flask import Flask, request
 from telebot.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -67,30 +69,84 @@ USER_PROFILES = {
     "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"},
 }
 
-REPORTED_FILE = "reported.json"
-try:
-    with open(REPORTED_FILE, 'r', encoding='utf-8') as f:
-        reported_data = json.load(f)
-except FileNotFoundError:
-    reported_data = {}
+SHEET_ID = "1zlzBdRhJvzBZK8iGpN5-jIxPKoSTisX2Ep240hVwywg"
 
-PENDING_FILE = "pending_reports.json"
-try:
-    with open(PENDING_FILE, 'r', encoding='utf-8') as f:
-        pending_reports = json.load(f)
-except FileNotFoundError:
-    pending_reports = []
+def _get_sheet():
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    creds_dict = json.loads(creds_json)
+    scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    gc = gspread.authorize(creds)
+    return gc.open_by_key(SHEET_ID)
 
-STATE_FILE = "user_states.json"
-try:
-    with open(STATE_FILE, 'r', encoding='utf-8') as f:
-        user_states = json.load(f)
-except FileNotFoundError:
-    user_states = {}
+def _ensure_sheet(spreadsheet, name, headers):
+    try:
+        ws = spreadsheet.worksheet(name)
+    except gspread.WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
+        ws.append_row(headers)
+    return ws
+
+def _load_reported():
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "reported", ["name", "date"])
+        rows = ws.get_all_records()
+        data = {}
+        for r in rows:
+            data.setdefault(r["name"], {})[r["date"]] = True
+        return data
+    except Exception as e:
+        print(f"Lỗi load reported: {e}")
+        return {}
+
+def _load_pending():
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "pending", ["name", "date", "ca", "chat_id", "message_id"])
+        rows = ws.get_all_records()
+        result = []
+        for r in rows:
+            result.append({
+                "name": r["name"], "date": r["date"], "ca": r["ca"],
+                "chat_id": int(r["chat_id"]) if r["chat_id"] else None,
+                "message_id": int(r["message_id"]) if r["message_id"] else None,
+            })
+        return result
+    except Exception as e:
+        print(f"Lỗi load pending: {e}")
+        return []
+
+def _load_states():
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "states", ["chat_id", "state_json"])
+        rows = ws.get_all_records()
+        data = {}
+        for r in rows:
+            try:
+                data[str(r["chat_id"])] = json.loads(r["state_json"])
+            except Exception:
+                pass
+        return data
+    except Exception as e:
+        print(f"Lỗi load states: {e}")
+        return {}
+
+reported_data = _load_reported()
+pending_reports = _load_pending()
+user_states = _load_states()
 
 def save_states():
-    with open(STATE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(user_states, f, ensure_ascii=False, indent=4)
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "states", ["chat_id", "state_json"])
+        ws.clear()
+        ws.append_row(["chat_id", "state_json"])
+        for chat_id, state in user_states.items():
+            ws.append_row([chat_id, json.dumps(state, ensure_ascii=False)])
+    except Exception as e:
+        print(f"Lỗi save states: {e}")
 
 known_chat_ids = set()
 vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -117,12 +173,23 @@ def mark_as_reported(name, date_str):
     if name not in reported_data:
         reported_data[name] = {}
     reported_data[name][date_str] = True
-    with open(REPORTED_FILE, 'w', encoding='utf-8') as f:
-        json.dump(reported_data, f, ensure_ascii=False, indent=4)
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "reported", ["name", "date"])
+        ws.append_row([name, date_str])
+    except Exception as e:
+        print(f"Lỗi ghi reported: {e}")
 
 def save_pending():
-    with open(PENDING_FILE, 'w', encoding='utf-8') as f:
-        json.dump(pending_reports, f, ensure_ascii=False, indent=4)
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "pending", ["name", "date", "ca", "chat_id", "message_id"])
+        ws.clear()
+        ws.append_row(["name", "date", "ca", "chat_id", "message_id"])
+        for r in pending_reports:
+            ws.append_row([r["name"], r["date"], r["ca"], r.get("chat_id",""), r.get("message_id","")])
+    except Exception as e:
+        print(f"Lỗi save pending: {e}")
 
 def submit_to_form(report):
     config = CA_CONFIG[report['ca']]
@@ -271,10 +338,6 @@ def handle_missing(message):
     bot.reply_to(message, "📊 Kiểm tra báo cáo tháng\nChọn tên:", reply_markup=markup)
 
 
-@bot.message_handler(commands=['reportall'])
-def handle_reportall(message):
-    report_all_status(message.chat.id)
-    
 @bot.message_handler(commands=['reportall'])
 def handle_reportall(message):
     report_all_status(message.chat.id)
@@ -533,6 +596,18 @@ def handle_message(message):
         bot.reply_to(message, "Gửi /report để báo cáo 1 ngày, hoặc /reportmissing để lên lịch nhiều ngày.")
         return
 
+    # /missing: nhap thang tu chon
+    if state.get('step') == 'ms_input_month':
+        text = message.text.strip()
+        try:
+            parts = text.split('/')
+            month, year = int(parts[0]), int(parts[1])
+            assert 1 <= month <= 12 and year >= 2000
+            _show_ms_result(chat_id, state, year, month)
+        except Exception:
+            bot.reply_to(message, "Sai định dạng! Nhập lại mm/yyyy, ví dụ: 03/2025")
+        return
+
     # /reportmissing buoc 1: nhap thang tu chon
     if state.get('step') == 'rm_input_month':
         text = message.text.strip()
@@ -592,45 +667,78 @@ def handle_message(message):
 def handle_ms_name(call):
     bot.answer_callback_query(call.id)
     chat_id = call.message.chat.id
-
     name = call.data.replace('ms_name_', '')
     if name not in NAME_OPTIONS:
         return
-
     now = datetime.now(vn_tz)
-    year, month = now.year, now.month
-    today = now.day
+    cur_m, cur_y = now.month, now.year
+    prev_m = cur_m - 1 if cur_m > 1 else 12
+    prev_y = cur_y if cur_m > 1 else cur_y - 1
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton(f"Tháng {cur_m}/{cur_y} (tháng này)", callback_data=f"ms_month_{cur_y}_{cur_m}"))
+    markup.add(InlineKeyboardButton(f"Tháng {prev_m}/{prev_y} (tháng trước)", callback_data=f"ms_month_{prev_y}_{prev_m}"))
+    markup.add(InlineKeyboardButton("Nhập tháng khác", callback_data="ms_month_custom"))
+    bot.edit_message_text(
+        f"Đã chọn: {NAME_DISPLAY[name]}\nChọn tháng cần kiểm tra:",
+        chat_id, call.message.message_id,
+        reply_markup=markup
+    )
+    user_states[str(chat_id)] = {'step': 'ms_choose_month', 'ms_name': name}
+    save_states()
 
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('ms_month_'))
+def handle_ms_month(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'ms_choose_month':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    suffix = call.data.replace('ms_month_', '')
+    if suffix == 'custom':
+        state['step'] = 'ms_input_month'
+        save_states()
+        bot.send_message(chat_id, "Nhập tháng/năm cần kiểm tra (mm/yyyy, ví dụ: 03/2025):")
+        return
+    year, month = int(suffix.split('_')[0]), int(suffix.split('_')[1])
+    _show_ms_result(chat_id, state, year, month)
+
+
+def _show_ms_result(chat_id, state, year, month):
+    name = state['ms_name']
     missing_days = get_missing_days(name, year, month)
+    name_display = NAME_DISPLAY.get(name, name)
+    max_day = calendar.monthrange(year, month)[1]
+    today = datetime.now(vn_tz).date()
+    days_passed = min(max_day, (today - today.replace(day=1)).days + today.day if today.month == month and today.year == year else max_day)
+    reported_count = days_passed - len(missing_days)
 
     if not missing_days:
-        bot.send_message(chat_id, f"✅ {NAME_DISPLAY[name]} đã báo đủ tháng {month:02d}/{year}")
+        bot.send_message(chat_id, f"✅ {name_display} đã báo cáo đầy đủ tháng {month:02d}/{year}!")
+        if str(chat_id) in user_states:
+            del user_states[str(chat_id)]
+        save_states()
         return
 
-    reported_count = today - len(missing_days)
-
+    days_only = [d.split('/')[0] for d in missing_days]
     markup = InlineKeyboardMarkup(row_width=2)
     markup.row(
-        InlineKeyboardButton("Cập nhật", callback_data="ms_yes"),
-        InlineKeyboardButton("Không", callback_data="ms_no")
+        InlineKeyboardButton("📝 Bổ sung ngay", callback_data="ms_yes"),
+        InlineKeyboardButton("Bỏ qua", callback_data="ms_no")
     )
-
     bot.send_message(
         chat_id,
-        f"📊 Thống kê tháng {month:02d}/{year}\n\n"
-        f"👤 {NAME_DISPLAY[name]}\n"
+        f"📊 {name_display} - Tháng {month:02d}/{year}\n"
         f"✔️ Đã báo: {reported_count} ngày\n"
         f"❌ Chưa báo: {len(missing_days)} ngày\n\n"
-        f"{', '.join(missing_days)}\n\n"
+        f"{', '.join(days_only)}\n\n"
         f"Bạn có muốn bổ sung không?",
         reply_markup=markup
     )
-
-    user_states[str(chat_id)] = {
-        'step': 'ms_confirm',
-        'rm_name': name,
-        'rm_dates': missing_days
-    }
+    state['step'] = 'ms_confirm'
+    state['rm_name'] = name
+    state['rm_dates'] = missing_days
     save_states()
 
 
