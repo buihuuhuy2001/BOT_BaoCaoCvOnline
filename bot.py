@@ -50,6 +50,21 @@ CA_CONFIG = {
     'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
+# Bo cau hinh rieng cho vai tro Ca truong (cong viec khac hoan toan nhan vien)
+CA_TRUONG_WORK = {
+    'cong_viec_1': 'Chuẩn bị nhận ca, điều hành và giải quyết các vấn đề liên quan trong ca, xử lý kịp thời các tình huống phát sinh, báo cáo tình hình hoạt động trong ca, làm đối soát, đảm bảo ANTT, ATGT, thực hiện vệ sinh khu vực trạm và các nhiệm vụ được giao khác',
+    'cong_viec_2': 'Điều hành xử lý các sự cố trong ca',
+    'cong_viec_3': 'Đảm bảo ATGT ANTT',
+    'cong_viec_4': '',
+    'cong_viec_5': '',
+}
+
+CA_CONFIG_CA_TRUONG = {
+    'Ca 1': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 14},
+    'Ca 2': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 22},
+}
+
 # Tên hiển thị cho CA_CONFIG keys (giữ tiếng Việt để gửi form)
 CA_DISPLAY = {
     'Ca 1': 'Ca 1',
@@ -61,13 +76,24 @@ CA_DISPLAY = {
     'Khác': 'Khác',
 }
 
-NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang"]
+NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang", "Dương Sơn Hải"]
 NAME_DISPLAY = {k: k for k in NAME_OPTIONS}
 
 USER_PROFILES = {
     "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
     "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"},
+    "Dương Sơn Hải": {"chuc_vu": "Ca trưởng", "dia_diem": "TTP Km102 - Cao tốc"},
 }
+
+# Anh xa ten -> bo cau hinh ca/cong viec rieng cho nguoi do
+USER_CA_CONFIG = {
+    "Bùi Hữu Huy": CA_CONFIG,
+    "Trần Văn Quang": CA_CONFIG,
+    "Dương Sơn Hải": CA_CONFIG_CA_TRUONG,
+}
+
+def get_ca_config(name):
+    return USER_CA_CONFIG.get(name, CA_CONFIG)
 
 SHEET_ID = "1zlzBdRhJvzBZK8iGpN5-jIxPKoSTisX2Ep240hVwywg"
 
@@ -200,7 +226,7 @@ def save_pending():
         print(f"Lỗi save pending: {e}")
 
 def submit_to_form(report):
-    config = CA_CONFIG[report['ca']]
+    config = get_ca_config(report['name'])[report['ca']]
     user_info = USER_PROFILES[report['name']]
     day, month, year = map(int, report['date'].split('/'))
     data = {
@@ -235,7 +261,7 @@ def process_pending_reports():
     for report in pending_reports:
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
-        min_hour = CA_CONFIG[report['ca']]['min_hour']
+        min_hour = get_ca_config(report['name'])[report['ca']]['min_hour']
         required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
         if now >= required_datetime:
             to_submit.append(report)
@@ -294,7 +320,7 @@ def report_all_status(chat_id):
             pending_for_name = [r for r in pending_reports if r['date'] == today and r['name'] == name]
             if pending_for_name:
                 for p in pending_for_name:
-                    min_hour = CA_CONFIG[p['ca']]['min_hour']
+                    min_hour = get_ca_config(name)[p['ca']]['min_hour']
                     ca_display = CA_DISPLAY.get(p['ca'], p['ca'])
                     status_lines.append(f"- {display}: Đang chờ gửi {ca_display} (sau {min_hour:02d}:01)")
             else:
@@ -386,7 +412,7 @@ def handle_date_type(call):
         state['date'] = today
         state['step'] = 2
         markup = InlineKeyboardMarkup(row_width=2)
-        for ca_key in CA_CONFIG:
+        for ca_key in get_ca_config(state['name']):
             markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=ca_key))
         sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {today} (hôm nay)\nChọn ca làm việc:", reply_markup=markup)
         state['message_id'] = sent_msg.message_id
@@ -436,7 +462,7 @@ def _ask_ca_for_day(chat_id, state):
         return
     date_str = dates[idx]
     markup = InlineKeyboardMarkup(row_width=2)
-    for ca_key in CA_CONFIG:
+    for ca_key in get_ca_config(state['rm_name']):
         markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"rm_ca_{ca_key}"))
     bot.send_message(
         chat_id,
@@ -462,7 +488,7 @@ def _finish_rm(chat_id, state):
             'message_id': None
         }
         day, month, year = map(int, date_str.split('/'))
-        min_hour = CA_CONFIG[ca]['min_hour']
+        min_hour = get_ca_config(name)[ca]['min_hour']
         required_dt = datetime.combine(
             datetime(year, month, day).date(), time(min_hour, 1)
         ).replace(tzinfo=vn_tz)
@@ -582,7 +608,7 @@ def handle_rm_ca(call):
         return
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
     ca = call.data.replace('rm_ca_', '')
-    if ca not in CA_CONFIG:
+    if ca not in get_ca_config(state['rm_name']):
         return
     dates = state['rm_dates']
     idx = state['rm_index']
@@ -658,7 +684,7 @@ def handle_message(message):
             state['date'] = date_str
             state['step'] = 2
             markup = InlineKeyboardMarkup(row_width=2)
-            for ca_key in CA_CONFIG:
+            for ca_key in get_ca_config(state['name']):
                 markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=ca_key))
             sent_msg = bot.send_message(chat_id, f"Ngày báo cáo: {date_str}\nChọn ca làm việc:", reply_markup=markup)
             state['message_id'] = sent_msg.message_id
@@ -799,7 +825,8 @@ def handle_callback(call):
             bot.send_message(chat_id, "Trạng thái không hợp lệ, gửi /report lại!")
             return
         ca = call.data
-        if ca not in CA_CONFIG:
+        ca_config = get_ca_config(state['name'])
+        if ca not in ca_config:
             bot.send_message(chat_id, "Ca không hợp lệ!")
             return
         state['ca'] = ca
@@ -811,7 +838,7 @@ def handle_callback(call):
                 InlineKeyboardButton("Hủy", callback_data='no_overwrite')
             )
             ca_display = CA_DISPLAY.get(ca, ca)
-            config = CA_CONFIG[ca]
+            config = ca_config[ca]
             bot.send_message(chat_id, f"Đã báo ngày {state['date']}! Ghi đè với {ca_display} ({config['tinh_hinh']})?", reply_markup=markup)
             state['step'] = 'confirm_overwrite'
             save_states()
@@ -826,7 +853,7 @@ def schedule_report(chat_id, state, overwrite=False):
     print(f"[SCHEDULE] Bat dau cho {state['name']}, ca {state['ca']}, date {state['date']}")
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
-    min_hour = CA_CONFIG[state['ca']]['min_hour']
+    min_hour = get_ca_config(state['name'])[state['ca']]['min_hour']
     required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
     now = datetime.now(vn_tz)
     report_data = {
