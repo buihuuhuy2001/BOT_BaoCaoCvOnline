@@ -43,7 +43,7 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScjsFj9xeDHd6T7BwPCt5XzfCGK
 CA_CONFIG = {
     'Ca 1': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 14},
     'Ca 2': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
-    'Ca 3': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Hỗ trợ vận hành thu phí', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': 'Hoàn thành các nhiệm vụ được giao khác', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 6, 'next_day': True},
     'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Xử lý các sự cố phát sinh và những tình huống khẩn cấp', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
     'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
     'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
@@ -62,7 +62,11 @@ CA_TRUONG_WORK = {
 CA_CONFIG_CA_TRUONG = {
     'Ca 1': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 14},
     'Ca 2': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 22},
-    'Ca 3': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 6, 'next_day': True},
+    'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Xử lý các sự cố phát sinh và những tình huống khẩn cấp', 'cong_viec_2': 'Bảo trì , Bảo dưỡng thiết bị máy móc', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
+    'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
 # Tên hiển thị cho CA_CONFIG keys (giữ tiếng Việt để gửi form)
@@ -94,6 +98,17 @@ USER_CA_CONFIG = {
 
 def get_ca_config(name):
     return USER_CA_CONFIG.get(name, CA_CONFIG)
+
+def get_required_datetime(report_date, ca_cfg):
+    """Tinh thoi diem duoc phep tu gui form. Neu ca_cfg co next_day=True
+    (vd Ca 3 lam 22h hom nay den 6h sang hom sau) thi cong them 1 ngay."""
+    send_date = report_date + timedelta(days=1) if ca_cfg.get('next_day') else report_date
+    return datetime.combine(send_date, time(ca_cfg['min_hour'], 1)).replace(tzinfo=vn_tz)
+
+def format_send_time(ca_cfg):
+    """Chuoi hien thi gio tu gui, vd '06:01 ngay hom sau' hoac '14:01'."""
+    suffix = " ngày hôm sau" if ca_cfg.get('next_day') else ""
+    return f"{ca_cfg['min_hour']:02d}:01{suffix}"
 
 SHEET_ID = "1zlzBdRhJvzBZK8iGpN5-jIxPKoSTisX2Ep240hVwywg"
 
@@ -261,8 +276,8 @@ def process_pending_reports():
     for report in pending_reports:
         report_date_obj = datetime.strptime(report['date'], "%d/%m/%Y")
         report_date = report_date_obj.date()
-        min_hour = get_ca_config(report['name'])[report['ca']]['min_hour']
-        required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
+        ca_cfg = get_ca_config(report['name'])[report['ca']]
+        required_datetime = get_required_datetime(report_date, ca_cfg)
         if now >= required_datetime:
             to_submit.append(report)
         else:
@@ -320,9 +335,9 @@ def report_all_status(chat_id):
             pending_for_name = [r for r in pending_reports if r['date'] == today and r['name'] == name]
             if pending_for_name:
                 for p in pending_for_name:
-                    min_hour = get_ca_config(name)[p['ca']]['min_hour']
+                    ca_cfg = get_ca_config(name)[p['ca']]
                     ca_display = CA_DISPLAY.get(p['ca'], p['ca'])
-                    status_lines.append(f"- {display}: Đang chờ gửi {ca_display} (sau {min_hour:02d}:01)")
+                    status_lines.append(f"- {display}: Đang chờ gửi {ca_display} (sau {format_send_time(ca_cfg)})")
             else:
                 status_lines.append(f"- {display}: Chưa báo hôm nay")
     bot.send_message(chat_id, "\n".join(status_lines))
@@ -488,10 +503,8 @@ def _finish_rm(chat_id, state):
             'message_id': None
         }
         day, month, year = map(int, date_str.split('/'))
-        min_hour = get_ca_config(name)[ca]['min_hour']
-        required_dt = datetime.combine(
-            datetime(year, month, day).date(), time(min_hour, 1)
-        ).replace(tzinfo=vn_tz)
+        ca_cfg = get_ca_config(name)[ca]
+        required_dt = get_required_datetime(datetime(year, month, day).date(), ca_cfg)
 
         # Xoa pending cu neu co
         pending_reports = [
@@ -508,7 +521,7 @@ def _finish_rm(chat_id, state):
                 errors.append(f"{date_str} (lỗi gửi)")
         else:
             pending_reports.append(report_data)
-            scheduled.append(f"{date_str} ({CA_DISPLAY.get(ca, ca)}) - tự gửi sau {min_hour:02d}:01")
+            scheduled.append(f"{date_str} ({CA_DISPLAY.get(ca, ca)}) - tự gửi sau {format_send_time(ca_cfg)}")
 
     save_pending()
 
@@ -853,8 +866,8 @@ def schedule_report(chat_id, state, overwrite=False):
     print(f"[SCHEDULE] Bat dau cho {state['name']}, ca {state['ca']}, date {state['date']}")
     report_date_obj = datetime.strptime(state['date'], "%d/%m/%Y")
     report_date = report_date_obj.date()
-    min_hour = get_ca_config(state['name'])[state['ca']]['min_hour']
-    required_datetime = datetime.combine(report_date, time(min_hour, 1)).replace(tzinfo=vn_tz)
+    ca_cfg = get_ca_config(state['name'])[state['ca']]
+    required_datetime = get_required_datetime(report_date, ca_cfg)
     now = datetime.now(vn_tz)
     report_data = {
         'name': state['name'],
@@ -883,7 +896,7 @@ def schedule_report(chat_id, state, overwrite=False):
         pending_reports.append(report_data)
         save_pending()
         ca_display = CA_DISPLAY.get(state['ca'], state['ca'])
-        bot.send_message(chat_id, f"Đã nhận {ca_display} ngày {state['date']}. Tự gửi sau {min_hour:02d}:01")
+        bot.send_message(chat_id, f"Đã nhận {ca_display} ngày {state['date']}. Tự gửi sau {format_send_time(ca_cfg)}")
     del user_states[str(chat_id)]
     save_states()
 
