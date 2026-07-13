@@ -86,7 +86,7 @@ NAME_DISPLAY = {k: k for k in NAME_OPTIONS}
 USER_PROFILES = {
     "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
     "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"},
-    "Dương Sơn Hải": {"chuc_vu": "Ca trưởng", "dia_diem": "TTP Km102 - Cao tốc"},
+    "Dương Sơn Hải": {"chuc_vu": "Ca trưởng", "dia_diem": "TTP TL242 - Cao tốc"},
 }
 
 # Anh xa ten -> bo cau hinh ca/cong viec rieng cho nguoi do
