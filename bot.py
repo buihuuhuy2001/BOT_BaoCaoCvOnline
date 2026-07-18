@@ -80,7 +80,7 @@ CA_DISPLAY = {
     'Khác': 'Khác',
 }
 
-NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang", "Dương Sơn Hải"]
+NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang"] #"Dương Sơn Hải" ]
 NAME_DISPLAY = {k: k for k in NAME_OPTIONS}
 
 USER_PROFILES = {
