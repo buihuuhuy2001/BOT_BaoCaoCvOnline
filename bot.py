@@ -80,35 +80,11 @@ CA_DISPLAY = {
     'Khác': 'Khác',
 }
 
-NAME_OPTIONS = ["Bùi Hữu Huy", "Trần Văn Quang"] #"Dương Sơn Hải" ]
-NAME_DISPLAY = {k: k for k in NAME_OPTIONS}
-
-USER_PROFILES = {
-    "Bùi Hữu Huy": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
-    "Trần Văn Quang": {"chuc_vu": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"},
-    "Dương Sơn Hải": {"chuc_vu": "Ca trưởng", "dia_diem": "TTP TL242 - Cao tốc"},
+# Anh xa CHUC DANH -> bo cau hinh cong viec (co dinh trong code, it doi)
+CHUC_DANH_CA_CONFIG = {
+    "Nhân viên Kỹ thuật - Công nghệ": CA_CONFIG,
+    "Ca trưởng": CA_CONFIG_CA_TRUONG,
 }
-
-# Anh xa ten -> bo cau hinh ca/cong viec rieng cho nguoi do
-USER_CA_CONFIG = {
-    "Bùi Hữu Huy": CA_CONFIG,
-    "Trần Văn Quang": CA_CONFIG,
-    "Dương Sơn Hải": CA_CONFIG_CA_TRUONG,
-}
-
-def get_ca_config(name):
-    return USER_CA_CONFIG.get(name, CA_CONFIG)
-
-def get_required_datetime(report_date, ca_cfg):
-    """Tinh thoi diem duoc phep tu gui form. Neu ca_cfg co next_day=True
-    (vd Ca 3 lam 22h hom nay den 6h sang hom sau) thi cong them 1 ngay."""
-    send_date = report_date + timedelta(days=1) if ca_cfg.get('next_day') else report_date
-    return datetime.combine(send_date, time(ca_cfg['min_hour'], 1)).replace(tzinfo=vn_tz)
-
-def format_send_time(ca_cfg):
-    """Chuoi hien thi gio tu gui, vd '06:01 ngay hom sau' hoac '14:01'."""
-    suffix = " ngày hôm sau" if ca_cfg.get('next_day') else ""
-    return f"{ca_cfg['min_hour']:02d}:01{suffix}"
 
 SHEET_ID = "1zlzBdRhJvzBZK8iGpN5-jIxPKoSTisX2Ep240hVwywg"
 
@@ -127,6 +103,62 @@ def _ensure_sheet(spreadsheet, name, headers):
         ws = spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
         ws.append_row(headers)
     return ws
+
+# Danh sach nguoi mac dinh, dung khi sheet 'config' chua co du lieu
+# hoac khi khong ket noi duoc Google Sheet (fallback an toan)
+_DEFAULT_PEOPLE = [
+    {"ten": "Bùi Hữu Huy", "chuc_danh": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP QL279 - Cao tốc"},
+    {"ten": "Trần Văn Quang", "chuc_danh": "Nhân viên Kỹ thuật - Công nghệ", "dia_diem": "TTP TL242 - Cao tốc"},
+]
+
+def load_people_config():
+    """Doc danh sach nguoi (ten, chuc danh, dia diem) tu sheet 'config'.
+    Neu sheet chua ton tai/chua co du lieu, tu tao va dien du lieu mac dinh.
+    Neu loi ket noi, dung du lieu mac dinh de bot van chay duoc."""
+    try:
+        spreadsheet = _get_sheet()
+        ws = _ensure_sheet(spreadsheet, "config", ["ten", "chuc_danh", "dia_diem"])
+        rows = ws.get_all_records()
+        if not rows:
+            for p in _DEFAULT_PEOPLE:
+                ws.append_row([p["ten"], p["chuc_danh"], p["dia_diem"]])
+            rows = _DEFAULT_PEOPLE
+    except Exception as e:
+        print(f"Lỗi load config nhân sự, dùng danh sách mặc định: {e}")
+        rows = _DEFAULT_PEOPLE
+
+    name_options, name_display, user_profiles, user_ca_config = [], {}, {}, {}
+    for r in rows:
+        name = str(r.get("ten", "")).strip()
+        chuc_danh = str(r.get("chuc_danh", "")).strip()
+        dia_diem = str(r.get("dia_diem", "")).strip()
+        if not name:
+            continue
+        name_options.append(name)
+        name_display[name] = name
+        user_profiles[name] = {"chuc_vu": chuc_danh, "dia_diem": dia_diem}
+        user_ca_config[name] = CHUC_DANH_CA_CONFIG.get(chuc_danh, CA_CONFIG)
+    return name_options, name_display, user_profiles, user_ca_config
+
+NAME_OPTIONS, NAME_DISPLAY, USER_PROFILES, USER_CA_CONFIG = load_people_config()
+
+def reload_people_config():
+    global NAME_OPTIONS, NAME_DISPLAY, USER_PROFILES, USER_CA_CONFIG
+    NAME_OPTIONS, NAME_DISPLAY, USER_PROFILES, USER_CA_CONFIG = load_people_config()
+
+def get_ca_config(name):
+    return USER_CA_CONFIG.get(name, CA_CONFIG)
+
+def get_required_datetime(report_date, ca_cfg):
+    """Tinh thoi diem duoc phep tu gui form. Neu ca_cfg co next_day=True
+    (vd Ca 3 lam 22h hom nay den 6h sang hom sau) thi cong them 1 ngay."""
+    send_date = report_date + timedelta(days=1) if ca_cfg.get('next_day') else report_date
+    return datetime.combine(send_date, time(ca_cfg['min_hour'], 1)).replace(tzinfo=vn_tz)
+
+def format_send_time(ca_cfg):
+    """Chuoi hien thi gio tu gui, vd '06:01 ngay hom sau' hoac '14:01'."""
+    suffix = " ngày hôm sau" if ca_cfg.get('next_day') else ""
+    return f"{ca_cfg['min_hour']:02d}:01{suffix}"
 
 def _load_reported():
     try:
@@ -346,6 +378,7 @@ scheduler = BackgroundScheduler(timezone=vn_tz)
 scheduler.add_job(process_pending_reports, IntervalTrigger(minutes=5), timezone=vn_tz)
 scheduler.add_job(process_pending_reports, CronTrigger(hour='1,7,10,15', minute=1), timezone=vn_tz)
 scheduler.add_job(send_hourly_reminder, CronTrigger(hour='1-15', minute=0), timezone=vn_tz)
+scheduler.add_job(reload_people_config, IntervalTrigger(minutes=15), timezone=vn_tz)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -390,6 +423,12 @@ def handle_missing(message):
 @bot.message_handler(commands=['reportall'])
 def handle_reportall(message):
     report_all_status(message.chat.id)
+
+@bot.message_handler(commands=['reload'])
+def handle_reload(message):
+    reload_people_config()
+    danh_sach = ', '.join(NAME_DISPLAY.get(n, n) for n in NAME_OPTIONS) or "(trống)"
+    bot.reply_to(message, f"Đã tải lại danh sách từ Google Sheet:\n{danh_sach}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('name_'))
 def handle_name_callback(call):
