@@ -245,7 +245,16 @@ def get_missing_days(name, year, month):
             missing.append(date_str)
 
     return missing
-    
+
+WEEKDAY_VN = ["Th2", "Th3", "Th4", "Th5", "Th6", "Th7", "CN"]
+
+def format_day_with_weekday(date_str):
+    # date_str dạng "dd/mm/yyyy" -> trả về "dd (Thứ)"
+    d, m, y = date_str.split('/')
+    date_obj = datetime(int(y), int(m), int(d)).date()
+    weekday = WEEKDAY_VN[date_obj.weekday()]
+    return f"{d} ({weekday})"
+
 def mark_as_reported(name, date_str):
     if name not in reported_data:
         reported_data[name] = {}
@@ -807,7 +816,7 @@ def _show_ms_result(chat_id, state, year, month):
         save_states()
         return
 
-    days_only = [d.split('/')[0] for d in missing_days]
+    days_only = [format_day_with_weekday(d) for d in missing_days]
     markup = InlineKeyboardMarkup(row_width=2)
     markup.row(
         InlineKeyboardButton("📝 Bổ sung ngay", callback_data="ms_yes"),
