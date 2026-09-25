@@ -700,133 +700,6 @@ def handle_rm_ca(call):
 
 
 # ================================================================
-#  /reportfast -- Tim ngay thieu roi gan 1 ca cho nhieu ngay cung luc
-# ================================================================
-
-@bot.message_handler(commands=['reportfast'])
-def start_report_fast(message):
-    chat_id = message.chat.id
-    known_chat_ids.add(chat_id)
-    markup = InlineKeyboardMarkup(row_width=1)
-    for name in NAME_OPTIONS:
-        markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"rf_name_{name}"))
-    bot.reply_to(message, "⚡ Báo cáo nhanh (1 ca áp dụng cho nhiều ngày cùng lúc)\nChọn tên của bạn:", reply_markup=markup)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_name_'))
-def handle_rf_name(call):
-    bot.answer_callback_query(call.id)
-    chat_id = call.message.chat.id
-    name = call.data.replace('rf_name_', '')
-    if name not in NAME_OPTIONS:
-        return
-    now = datetime.now(vn_tz)
-    cur_m, cur_y = now.month, now.year
-    prev_m = cur_m - 1 if cur_m > 1 else 12
-    prev_y = cur_y if cur_m > 1 else cur_y - 1
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(f"Tháng {cur_m}/{cur_y} (tháng này)", callback_data=f"rf_month_{cur_y}_{cur_m}"))
-    markup.add(InlineKeyboardButton(f"Tháng {prev_m}/{prev_y} (tháng trước)", callback_data=f"rf_month_{prev_y}_{prev_m}"))
-    markup.add(InlineKeyboardButton("Nhập tháng khác", callback_data="rf_month_custom"))
-    bot.edit_message_text(
-        f"Đã chọn: {NAME_DISPLAY[name]}\nChọn tháng cần bổ sung:",
-        chat_id, call.message.message_id,
-        reply_markup=markup
-    )
-    user_states[str(chat_id)] = {'step': 'rf_choose_month', 'rm_name': name}
-    save_states()
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_month_'))
-def handle_rf_month(call):
-    bot.answer_callback_query(call.id)
-    chat_id = call.message.chat.id
-    state = user_states.get(str(chat_id), {})
-    if state.get('step') != 'rf_choose_month':
-        return
-    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
-    suffix = call.data.replace('rf_month_', '')
-    if suffix == 'custom':
-        state['step'] = 'rf_input_month'
-        save_states()
-        bot.send_message(chat_id, "Nhập tháng/năm cần bổ sung (mm/yyyy, ví dụ: 03/2025):")
-        return
-    year, month = int(suffix.split('_')[0]), int(suffix.split('_')[1])
-    _start_report_fast_days(chat_id, state, year, month)
-
-
-def _start_report_fast_days(chat_id, state, year, month):
-    name = state['rm_name']
-    missing_days = get_missing_days(name, year, month)
-    name_display = NAME_DISPLAY.get(name, name)
-    if not missing_days:
-        bot.send_message(chat_id, f"✅ {name_display} đã báo cáo đầy đủ tháng {month:02d}/{year}!")
-        if str(chat_id) in user_states:
-            del user_states[str(chat_id)]
-        save_states()
-        return
-    state['rm_dates'] = missing_days
-    state['rm_index'] = 0
-    state['rm_ca_map'] = {}
-    state['step'] = 'rf_pick_ca'
-    save_states()
-    days_only = [format_day_with_weekday(d) for d in missing_days]
-    bot.send_message(
-        chat_id,
-        f"❌ {name_display} còn thiếu {len(missing_days)} ngày trong tháng {month:02d}/{year}:\n"
-        f"{', '.join(days_only)}\n\n"
-        f"Chọn 1 ca rồi nhập số ngày muốn áp dụng để báo nhanh nhiều ngày cùng lúc."
-    )
-    _ask_ca_for_day_fast(chat_id, state)
-
-
-def _ask_ca_for_day_fast(chat_id, state):
-    """Hỏi ca cho ngày hiện tại (chế độ nhanh, cho phép áp dụng nhiều ngày cùng lúc)."""
-    dates = state['rm_dates']
-    idx = state['rm_index']
-    if idx >= len(dates):
-        _finish_rm(chat_id, state)
-        return
-    date_str = dates[idx]
-    remain = len(dates) - idx
-    markup = InlineKeyboardMarkup(row_width=2)
-    for ca_key in get_ca_config(state['rm_name']):
-        markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"rf_ca_{ca_key}"))
-    bot.send_message(
-        chat_id,
-        f"Ngày {format_date_with_weekday(date_str)} ({idx + 1}/{len(dates)}, còn {remain} ngày)\nChọn ca làm việc:",
-        reply_markup=markup
-    )
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_ca_'))
-def handle_rf_ca(call):
-    bot.answer_callback_query(call.id)
-    chat_id = call.message.chat.id
-    state = user_states.get(str(chat_id), {})
-    if state.get('step') != 'rf_pick_ca':
-        return
-    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
-    ca = call.data.replace('rf_ca_', '')
-    if ca not in get_ca_config(state['rm_name']):
-        return
-    dates = state['rm_dates']
-    idx = state['rm_index']
-    remain = len(dates) - idx
-    state['rf_pending_ca'] = ca
-    state['step'] = 'rf_input_count'
-    save_states()
-    ca_display = CA_DISPLAY.get(ca, ca)
-    bot.send_message(
-        chat_id,
-        f"Áp dụng \"{ca_display}\" cho bao nhiêu ngày tiếp theo (tính cả ngày này, còn {remain} ngày)?\n"
-        f"• Gõ số, ví dụ: 5\n"
-        f"• Gõ \"hết\" để áp dụng cho tất cả ngày còn lại\n"
-        f"• Gõ 1 nếu chỉ ngày này"
-    )
-
-
-# ================================================================
 #  Message handler (nhap text)
 # ================================================================
 
@@ -835,7 +708,7 @@ def handle_message(message):
     chat_id = message.chat.id
     state = user_states.get(str(chat_id))
     if not state:
-        bot.reply_to(message, "Gửi /report để báo cáo 1 ngày, /reportmissing để lên lịch nhiều ngày, hoặc /reportfast để báo nhanh nhiều ngày cùng ca.")
+        bot.reply_to(message, "Gửi /report để báo cáo 1 ngày, /missing để kiểm tra và bổ sung nhanh, hoặc /reportmissing để tự chọn danh sách ngày.")
         return
 
     # /missing: nhap thang tu chon
@@ -848,6 +721,46 @@ def handle_message(message):
             _show_ms_result(chat_id, state, year, month)
         except Exception:
             bot.reply_to(message, "Sai định dạng! Nhập lại mm/yyyy, ví dụ: 03/2025")
+        return
+
+    # /missing (mac dinh): nhap cac Chu nhat phai di lam
+    if state.get('step') == 'ms_sunday_input':
+        text = message.text.strip()
+        year, month = state['rm_year'], state['rm_month']
+        typed = set(parse_day_input(text, year, month))
+        working = [d for d in state['rm_sunday_days'] if d in typed]
+        off = [d for d in state['rm_sunday_days'] if d not in typed]
+        if not working:
+            bot.reply_to(message, "Không tìm thấy ngày Chủ nhật hợp lệ trong danh sách! Nhập lại, ví dụ: 13, 20")
+            return
+        for d in off:
+            state['rm_ca_map'][d] = 'Nghỉ bù - Nghỉ Chủ nhật'
+        state['rm_exception_queue'] = working
+        state['rm_exception_index'] = 0
+        state['rm_exception_next'] = 'weekday'
+        save_states()
+        bot.send_message(chat_id, f"Sẽ hỏi ca cho {len(working)} Chủ nhật: {', '.join(format_day_with_weekday(d) for d in working)}")
+        _ask_exception_ca(chat_id, state)
+        return
+
+    # /missing (mac dinh): nhap cac ngay thuong khong di Hanh chinh
+    if state.get('step') == 'ms_weekday_input':
+        text = message.text.strip()
+        year, month = state['rm_year'], state['rm_month']
+        typed = set(parse_day_input(text, year, month))
+        working = [d for d in state['rm_weekday_days'] if d in typed]
+        off = [d for d in state['rm_weekday_days'] if d not in typed]
+        if not working:
+            bot.reply_to(message, "Không tìm thấy ngày hợp lệ trong danh sách! Nhập lại, ví dụ: 7, 12, 15-16")
+            return
+        for d in off:
+            state['rm_ca_map'][d] = 'Hành chính'
+        state['rm_exception_queue'] = working
+        state['rm_exception_index'] = 0
+        state['rm_exception_next'] = 'finish'
+        save_states()
+        bot.send_message(chat_id, f"Sẽ hỏi ca cho {len(working)} ngày: {', '.join(format_day_with_weekday(d) for d in working)}")
+        _ask_exception_ca(chat_id, state)
         return
 
     # /reportmissing buoc 1: nhap thang tu chon
@@ -881,52 +794,6 @@ def handle_message(message):
             f"Đã nhận {len(dates)} ngày: {', '.join(dates)}\n\nBắt đầu chọn ca cho từng ngày:"
         )
         _ask_ca_for_day(chat_id, state)
-        return
-
-    # /reportfast buoc: nhap thang tu chon
-    if state.get('step') == 'rf_input_month':
-        text = message.text.strip()
-        try:
-            parts = text.split('/')
-            month, year = int(parts[0]), int(parts[1])
-            assert 1 <= month <= 12 and year >= 2000
-            _start_report_fast_days(chat_id, state, year, month)
-        except Exception:
-            bot.reply_to(message, "Sai định dạng! Nhập lại mm/yyyy, ví dụ: 03/2025")
-        return
-
-    # /reportfast buoc: nhap so ngay ap dung cho 1 ca da chon
-    if state.get('step') == 'rf_input_count':
-        text = message.text.strip().lower()
-        dates = state['rm_dates']
-        idx = state['rm_index']
-        remain = len(dates) - idx
-        if text in ('hết', 'het', 'tất cả', 'tat ca', 'all'):
-            count = remain
-        else:
-            try:
-                count = int(text)
-                if count < 1:
-                    raise ValueError
-            except ValueError:
-                bot.reply_to(message, "Không hợp lệ! Gõ 1 số nguyên dương (VD: 5), hoặc gõ \"hết\".")
-                return
-        count = min(count, remain)
-        ca = state.pop('rf_pending_ca', None)
-        if not ca:
-            bot.reply_to(message, "Có lỗi trạng thái, vui lòng gõ /reportfast để bắt đầu lại.")
-            if str(chat_id) in user_states:
-                del user_states[str(chat_id)]
-            save_states()
-            return
-        for i in range(idx, idx + count):
-            state['rm_ca_map'][dates[i]] = ca
-        state['rm_index'] = idx + count
-        state['step'] = 'rf_pick_ca'
-        save_states()
-        ca_display = CA_DISPLAY.get(ca, ca)
-        bot.reply_to(message, f"Đã gán \"{ca_display}\" cho {count} ngày (thứ {idx + 1}-{idx + count}/{len(dates)}).")
-        _ask_ca_for_day_fast(chat_id, state)
         return
 
     # /report: nhap ngay tu chon
@@ -1027,6 +894,8 @@ def _show_ms_result(chat_id, state, year, month):
     state['step'] = 'ms_confirm'
     state['rm_name'] = name
     state['rm_dates'] = missing_days
+    state['rm_year'] = year
+    state['rm_month'] = month
     save_states()
 
 
@@ -1052,8 +921,144 @@ def handle_missing_confirm(call):
     state['rm_ca_map'] = {}
     save_states()
 
-    bot.send_message(chat_id, "Bắt đầu bổ sung từng ngày...")
-    _ask_ca_for_day(chat_id, state)
+    _start_default_flow(chat_id, state)
+
+
+# ================================================================
+#  /missing (bo sung nhanh): mac dinh Hanh chinh / Nghi bu Chu nhat,
+#  chi hoi cac ngay ngoai le
+# ================================================================
+
+def _start_default_flow(chat_id, state):
+    """Phan loai ngay thieu thanh Chu nhat / ngay thuong roi hoi ngoai le."""
+    dates = state['rm_dates']
+    sunday_days, weekday_days = [], []
+    for d in dates:
+        day, month, year = map(int, d.split('/'))
+        wd = datetime(year, month, day).weekday()  # 0=Th2 ... 6=CN
+        (sunday_days if wd == 6 else weekday_days).append(d)
+    state['rm_sunday_days'] = sunday_days
+    state['rm_weekday_days'] = weekday_days
+    state['rm_ca_map'] = {}
+    save_states()
+    _ask_sunday_question(chat_id, state)
+
+
+def _ask_sunday_question(chat_id, state):
+    sunday_days = state.get('rm_sunday_days', [])
+    if not sunday_days:
+        _ask_weekday_question(chat_id, state)
+        return
+    state['step'] = 'ms_sunday_ask'
+    save_states()
+    days_str = ', '.join(format_day_with_weekday(d) for d in sunday_days)
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton("Không, tất cả đều nghỉ", callback_data="msx_sun_no"))
+    markup.add(InlineKeyboardButton("Có, để tôi ghi ra", callback_data="msx_sun_yes"))
+    bot.send_message(
+        chat_id,
+        f"Chủ nhật còn thiếu: {days_str}\n\nCó ngày nào bạn PHẢI ĐI LÀM không?",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data in ("msx_sun_yes", "msx_sun_no"))
+def handle_msx_sunday(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'ms_sunday_ask':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    if call.data == "msx_sun_no":
+        for d in state.get('rm_sunday_days', []):
+            state['rm_ca_map'][d] = 'Nghỉ bù - Nghỉ Chủ nhật'
+        save_states()
+        _ask_weekday_question(chat_id, state)
+        return
+    state['step'] = 'ms_sunday_input'
+    save_states()
+    bot.send_message(chat_id, "Ghi ra các Chủ nhật PHẢI ĐI LÀM (VD: 13, 20):")
+
+
+def _ask_weekday_question(chat_id, state):
+    weekday_days = state.get('rm_weekday_days', [])
+    if not weekday_days:
+        _finish_rm(chat_id, state)
+        return
+    state['step'] = 'ms_weekday_ask'
+    save_states()
+    days_str = ', '.join(format_day_with_weekday(d) for d in weekday_days)
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton("Không, tất cả đều Hành chính", callback_data="msx_week_no"))
+    markup.add(InlineKeyboardButton("Có, để tôi ghi ra", callback_data="msx_week_yes"))
+    bot.send_message(
+        chat_id,
+        f"Ngày thường còn thiếu: {days_str}\n\nCó ngày nào KHÔNG đi Hành chính không? (nghỉ phép, đi trực ca...)",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data in ("msx_week_yes", "msx_week_no"))
+def handle_msx_weekday(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'ms_weekday_ask':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    if call.data == "msx_week_no":
+        for d in state.get('rm_weekday_days', []):
+            state['rm_ca_map'][d] = 'Hành chính'
+        save_states()
+        _finish_rm(chat_id, state)
+        return
+    state['step'] = 'ms_weekday_input'
+    save_states()
+    bot.send_message(chat_id, "Ghi ra các ngày KHÔNG đi Hành chính (VD: 7, 12, 15-16):")
+
+
+def _ask_exception_ca(chat_id, state):
+    """Hoi ca lan luot cho danh sach ngay ngoai le da ghi ra."""
+    queue = state.get('rm_exception_queue', [])
+    idx = state.get('rm_exception_index', 0)
+    if idx >= len(queue):
+        if state.get('rm_exception_next') == 'weekday':
+            _ask_weekday_question(chat_id, state)
+        else:
+            _finish_rm(chat_id, state)
+        return
+    date_str = queue[idx]
+    state['step'] = 'ms_exception_pick_ca'
+    save_states()
+    markup = InlineKeyboardMarkup(row_width=2)
+    for ca_key in get_ca_config(state['rm_name']):
+        markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"msx_ca_{ca_key}"))
+    bot.send_message(
+        chat_id,
+        f"Ngày {format_date_with_weekday(date_str)} ({idx + 1}/{len(queue)})\nChọn ca làm việc:",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('msx_ca_'))
+def handle_msx_ca(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'ms_exception_pick_ca':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    ca = call.data.replace('msx_ca_', '')
+    if ca not in get_ca_config(state['rm_name']):
+        return
+    queue = state['rm_exception_queue']
+    idx = state['rm_exception_index']
+    state['rm_ca_map'][queue[idx]] = ca
+    state['rm_exception_index'] = idx + 1
+    save_states()
+    _ask_exception_ca(chat_id, state)
+
     
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
