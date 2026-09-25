@@ -69,6 +69,18 @@ CA_CONFIG_CA_TRUONG = {
     'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
 }
 
+# Bo cau hinh rieng cho vai tro Tram pho: lam ca giong Ca truong,
+# rieng Hanh chinh co noi dung cong viec rieng
+CA_CONFIG_TRAM_PHO = {
+    'Ca 1': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 14},
+    'Ca 2': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 22},
+    'Ca 3': {'tinh_hinh': 'Bình thường', **CA_TRUONG_WORK, 'min_hour': 6, 'next_day': True},
+    'Hành chính': {'tinh_hinh': 'Bình thường', 'cong_viec_1': 'Trực điều hành TTP, sắp xếp công việc. Tổ chức đảm bảo hoạt động TTP', 'cong_viec_2': 'Thực hiện các nhiệm vụ được giao khác', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 17},
+    'Nghỉ phép': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Nghỉ bù - Nghỉ Chủ nhật': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+    'Khác': {'tinh_hinh': 'Khác', 'cong_viec_1': '', 'cong_viec_2': '', 'cong_viec_3': '', 'cong_viec_4': '', 'cong_viec_5': '', 'min_hour': 8},
+}
+
 # Tên hiển thị cho CA_CONFIG keys (giữ tiếng Việt để gửi form)
 CA_DISPLAY = {
     'Ca 1': 'Ca 1',
@@ -84,6 +96,7 @@ CA_DISPLAY = {
 CHUC_DANH_CA_CONFIG = {
     "Nhân viên Kỹ thuật - Công nghệ": CA_CONFIG,
     "Ca trưởng": CA_CONFIG_CA_TRUONG,
+    "Trạm phó": CA_CONFIG_TRAM_PHO,
 }
 
 SHEET_ID = "1zlzBdRhJvzBZK8iGpN5-jIxPKoSTisX2Ep240hVwywg"
@@ -254,6 +267,13 @@ def format_day_with_weekday(date_str):
     date_obj = datetime(int(y), int(m), int(d)).date()
     weekday = WEEKDAY_VN[date_obj.weekday()]
     return f"{d} ({weekday})"
+
+def format_date_with_weekday(date_str):
+    # date_str dạng "dd/mm/yyyy" -> trả về "dd/mm/yyyy (Thứ)"
+    d, m, y = date_str.split('/')
+    date_obj = datetime(int(y), int(m), int(d)).date()
+    weekday = WEEKDAY_VN[date_obj.weekday()]
+    return f"{date_str} ({weekday})"
 
 def mark_as_reported(name, date_str):
     if name not in reported_data:
@@ -529,7 +549,7 @@ def _ask_ca_for_day(chat_id, state):
         markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"rm_ca_{ca_key}"))
     bot.send_message(
         chat_id,
-        f"Ngày {date_str} ({idx + 1}/{len(dates)})\nChọn ca làm việc:",
+        f"Ngày {format_date_with_weekday(date_str)} ({idx + 1}/{len(dates)})\nChọn ca làm việc:",
         reply_markup=markup
     )
 
@@ -680,6 +700,133 @@ def handle_rm_ca(call):
 
 
 # ================================================================
+#  /reportfast -- Tim ngay thieu roi gan 1 ca cho nhieu ngay cung luc
+# ================================================================
+
+@bot.message_handler(commands=['reportfast'])
+def start_report_fast(message):
+    chat_id = message.chat.id
+    known_chat_ids.add(chat_id)
+    markup = InlineKeyboardMarkup(row_width=1)
+    for name in NAME_OPTIONS:
+        markup.add(InlineKeyboardButton(NAME_DISPLAY[name], callback_data=f"rf_name_{name}"))
+    bot.reply_to(message, "⚡ Báo cáo nhanh (1 ca áp dụng cho nhiều ngày cùng lúc)\nChọn tên của bạn:", reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_name_'))
+def handle_rf_name(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    name = call.data.replace('rf_name_', '')
+    if name not in NAME_OPTIONS:
+        return
+    now = datetime.now(vn_tz)
+    cur_m, cur_y = now.month, now.year
+    prev_m = cur_m - 1 if cur_m > 1 else 12
+    prev_y = cur_y if cur_m > 1 else cur_y - 1
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton(f"Tháng {cur_m}/{cur_y} (tháng này)", callback_data=f"rf_month_{cur_y}_{cur_m}"))
+    markup.add(InlineKeyboardButton(f"Tháng {prev_m}/{prev_y} (tháng trước)", callback_data=f"rf_month_{prev_y}_{prev_m}"))
+    markup.add(InlineKeyboardButton("Nhập tháng khác", callback_data="rf_month_custom"))
+    bot.edit_message_text(
+        f"Đã chọn: {NAME_DISPLAY[name]}\nChọn tháng cần bổ sung:",
+        chat_id, call.message.message_id,
+        reply_markup=markup
+    )
+    user_states[str(chat_id)] = {'step': 'rf_choose_month', 'rm_name': name}
+    save_states()
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_month_'))
+def handle_rf_month(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'rf_choose_month':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    suffix = call.data.replace('rf_month_', '')
+    if suffix == 'custom':
+        state['step'] = 'rf_input_month'
+        save_states()
+        bot.send_message(chat_id, "Nhập tháng/năm cần bổ sung (mm/yyyy, ví dụ: 03/2025):")
+        return
+    year, month = int(suffix.split('_')[0]), int(suffix.split('_')[1])
+    _start_report_fast_days(chat_id, state, year, month)
+
+
+def _start_report_fast_days(chat_id, state, year, month):
+    name = state['rm_name']
+    missing_days = get_missing_days(name, year, month)
+    name_display = NAME_DISPLAY.get(name, name)
+    if not missing_days:
+        bot.send_message(chat_id, f"✅ {name_display} đã báo cáo đầy đủ tháng {month:02d}/{year}!")
+        if str(chat_id) in user_states:
+            del user_states[str(chat_id)]
+        save_states()
+        return
+    state['rm_dates'] = missing_days
+    state['rm_index'] = 0
+    state['rm_ca_map'] = {}
+    state['step'] = 'rf_pick_ca'
+    save_states()
+    days_only = [format_day_with_weekday(d) for d in missing_days]
+    bot.send_message(
+        chat_id,
+        f"❌ {name_display} còn thiếu {len(missing_days)} ngày trong tháng {month:02d}/{year}:\n"
+        f"{', '.join(days_only)}\n\n"
+        f"Chọn 1 ca rồi nhập số ngày muốn áp dụng để báo nhanh nhiều ngày cùng lúc."
+    )
+    _ask_ca_for_day_fast(chat_id, state)
+
+
+def _ask_ca_for_day_fast(chat_id, state):
+    """Hỏi ca cho ngày hiện tại (chế độ nhanh, cho phép áp dụng nhiều ngày cùng lúc)."""
+    dates = state['rm_dates']
+    idx = state['rm_index']
+    if idx >= len(dates):
+        _finish_rm(chat_id, state)
+        return
+    date_str = dates[idx]
+    remain = len(dates) - idx
+    markup = InlineKeyboardMarkup(row_width=2)
+    for ca_key in get_ca_config(state['rm_name']):
+        markup.add(InlineKeyboardButton(CA_DISPLAY[ca_key], callback_data=f"rf_ca_{ca_key}"))
+    bot.send_message(
+        chat_id,
+        f"Ngày {format_date_with_weekday(date_str)} ({idx + 1}/{len(dates)}, còn {remain} ngày)\nChọn ca làm việc:",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rf_ca_'))
+def handle_rf_ca(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    state = user_states.get(str(chat_id), {})
+    if state.get('step') != 'rf_pick_ca':
+        return
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=InlineKeyboardMarkup())
+    ca = call.data.replace('rf_ca_', '')
+    if ca not in get_ca_config(state['rm_name']):
+        return
+    dates = state['rm_dates']
+    idx = state['rm_index']
+    remain = len(dates) - idx
+    state['rf_pending_ca'] = ca
+    state['step'] = 'rf_input_count'
+    save_states()
+    ca_display = CA_DISPLAY.get(ca, ca)
+    bot.send_message(
+        chat_id,
+        f"Áp dụng \"{ca_display}\" cho bao nhiêu ngày tiếp theo (tính cả ngày này, còn {remain} ngày)?\n"
+        f"• Gõ số, ví dụ: 5\n"
+        f"• Gõ \"hết\" để áp dụng cho tất cả ngày còn lại\n"
+        f"• Gõ 1 nếu chỉ ngày này"
+    )
+
+
+# ================================================================
 #  Message handler (nhap text)
 # ================================================================
 
@@ -688,7 +835,7 @@ def handle_message(message):
     chat_id = message.chat.id
     state = user_states.get(str(chat_id))
     if not state:
-        bot.reply_to(message, "Gửi /report để báo cáo 1 ngày, hoặc /reportmissing để lên lịch nhiều ngày.")
+        bot.reply_to(message, "Gửi /report để báo cáo 1 ngày, /reportmissing để lên lịch nhiều ngày, hoặc /reportfast để báo nhanh nhiều ngày cùng ca.")
         return
 
     # /missing: nhap thang tu chon
@@ -734,6 +881,52 @@ def handle_message(message):
             f"Đã nhận {len(dates)} ngày: {', '.join(dates)}\n\nBắt đầu chọn ca cho từng ngày:"
         )
         _ask_ca_for_day(chat_id, state)
+        return
+
+    # /reportfast buoc: nhap thang tu chon
+    if state.get('step') == 'rf_input_month':
+        text = message.text.strip()
+        try:
+            parts = text.split('/')
+            month, year = int(parts[0]), int(parts[1])
+            assert 1 <= month <= 12 and year >= 2000
+            _start_report_fast_days(chat_id, state, year, month)
+        except Exception:
+            bot.reply_to(message, "Sai định dạng! Nhập lại mm/yyyy, ví dụ: 03/2025")
+        return
+
+    # /reportfast buoc: nhap so ngay ap dung cho 1 ca da chon
+    if state.get('step') == 'rf_input_count':
+        text = message.text.strip().lower()
+        dates = state['rm_dates']
+        idx = state['rm_index']
+        remain = len(dates) - idx
+        if text in ('hết', 'het', 'tất cả', 'tat ca', 'all'):
+            count = remain
+        else:
+            try:
+                count = int(text)
+                if count < 1:
+                    raise ValueError
+            except ValueError:
+                bot.reply_to(message, "Không hợp lệ! Gõ 1 số nguyên dương (VD: 5), hoặc gõ \"hết\".")
+                return
+        count = min(count, remain)
+        ca = state.pop('rf_pending_ca', None)
+        if not ca:
+            bot.reply_to(message, "Có lỗi trạng thái, vui lòng gõ /reportfast để bắt đầu lại.")
+            if str(chat_id) in user_states:
+                del user_states[str(chat_id)]
+            save_states()
+            return
+        for i in range(idx, idx + count):
+            state['rm_ca_map'][dates[i]] = ca
+        state['rm_index'] = idx + count
+        state['step'] = 'rf_pick_ca'
+        save_states()
+        ca_display = CA_DISPLAY.get(ca, ca)
+        bot.reply_to(message, f"Đã gán \"{ca_display}\" cho {count} ngày (thứ {idx + 1}-{idx + count}/{len(dates)}).")
+        _ask_ca_for_day_fast(chat_id, state)
         return
 
     # /report: nhap ngay tu chon
